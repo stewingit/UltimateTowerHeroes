@@ -7,14 +7,13 @@ local TroopEvent = RS:WaitForChild("Events"):WaitForChild("TroopEvent")
 local SessionLogs = {}
 local TroopCounts = {}
 local TroopMapping = {} 
-local LoadedLogsRef = {} -- Stores UI references for ticking
+local LoadedLogsRef = {} 
 local LastLoggedAutoSkip = nil 
 local ConfirmDelete = false
 local FolderName = "UTH Logged Strats"
 local CurrentLoadedContent = ""
 local IsCreateMode = false
 
--- NEW ENGINE LINK
 local ENGINE_LINK = "https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/Engine"
 
 if makefolder then makefolder(FolderName) end
@@ -60,19 +59,14 @@ local pGui = player:WaitForChild("PlayerGui")
 local autoSkipObj = pGui:WaitForChild("Menu"):WaitForChild("Info"):WaitForChild("AutoSkip")
 
 local sg = Instance.new("ScreenGui", pGui)
-sg.Name = "THULogger_V77"
+sg.Name = "THULogger_V78"
 sg.ResetOnSpawn = false
 
 local main = Instance.new("Frame", sg)
-main.Size = UDim2.new(0, 280, 0, 450)
-main.Position = UDim2.new(0.05, 0, 0.2, 0)
-main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-main.Active = true; main.Draggable = true
-Instance.new("UICorner", main)
+main.Size = UDim2.new(0, 280, 0, 450); main.Position = UDim2.new(0.05, 0, 0.2, 0); main.BackgroundColor3 = Color3.fromRGB(20, 20, 20); main.Active = true; main.Draggable = true; Instance.new("UICorner", main)
 
 local title = Instance.new("TextLabel", main)
-title.Size = UDim2.new(1, 0, 0, 40); title.Text = "THU LOGGER"; title.TextColor3 = Color3.new(1, 1, 1); title.BackgroundColor3 = Color3.fromRGB(35, 35, 35); title.Font = Enum.Font.SourceSansBold; title.TextSize = 20
-Instance.new("UICorner", title)
+title.Size = UDim2.new(1, 0, 0, 40); title.Text = "THU LOGGER"; title.TextColor3 = Color3.new(1, 1, 1); title.BackgroundColor3 = Color3.fromRGB(35, 35, 35); title.Font = Enum.Font.SourceSansBold; title.TextSize = 20; Instance.new("UICorner", title)
 
 local backBtn = Instance.new("TextButton", main)
 backBtn.Size = UDim2.new(0, 40, 0, 40); backBtn.Position = UDim2.new(0, 5, 0, 0); backBtn.Text = "←"; backBtn.TextColor3 = Color3.new(1, 1, 1); backBtn.BackgroundTransparency = 1; backBtn.Font = Enum.Font.SourceSansBold; backBtn.TextSize = 28; backBtn.Visible = false; backBtn.ZIndex = 20
@@ -80,14 +74,11 @@ backBtn.Size = UDim2.new(0, 40, 0, 40); backBtn.Position = UDim2.new(0, 5, 0, 0)
 local startMenu = Instance.new("Frame", main)
 startMenu.Size = UDim2.new(1, 0, 1, 0); startMenu.BackgroundTransparency = 1; startMenu.ZIndex = 10
 
--- SCROLLS
 local createScroll = Instance.new("ScrollingFrame", main)
-createScroll.Size = UDim2.new(1, -20, 1, -165); createScroll.Position = UDim2.new(0, 10, 0, 50); createScroll.BackgroundTransparency = 1; createScroll.ScrollBarThickness = 4; createScroll.Visible = false
-Instance.new("UIListLayout", createScroll).Padding = UDim.new(0, 5)
+createScroll.Size = UDim2.new(1, -20, 1, -165); createScroll.Position = UDim2.new(0, 10, 0, 50); createScroll.BackgroundTransparency = 1; createScroll.ScrollBarThickness = 4; createScroll.Visible = false; Instance.new("UIListLayout", createScroll).Padding = UDim.new(0, 5)
 
 local loadScroll = Instance.new("ScrollingFrame", main)
-loadScroll.Size = UDim2.new(1, -20, 1, -165); loadScroll.Position = UDim2.new(0, 10, 0, 50); loadScroll.BackgroundTransparency = 1; loadScroll.ScrollBarThickness = 4; loadScroll.Visible = false
-Instance.new("UIListLayout", loadScroll).Padding = UDim.new(0, 5)
+loadScroll.Size = UDim2.new(1, -20, 1, -165); loadScroll.Position = UDim2.new(0, 10, 0, 50); loadScroll.BackgroundTransparency = 1; loadScroll.ScrollBarThickness = 4; loadScroll.Visible = false; Instance.new("UIListLayout", loadScroll).Padding = UDim.new(0, 5)
 
 local saveOnlyBtn = Instance.new("TextButton", main); saveOnlyBtn.Size = UDim2.new(1, -20, 0, 45); saveOnlyBtn.Position = UDim2.new(0, 10, 1, -105); saveOnlyBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200); saveOnlyBtn.Text = "SAVE STRAT TO FILE"; saveOnlyBtn.TextColor3 = Color3.new(1, 1, 1); saveOnlyBtn.Font = Enum.Font.SourceSansBold; saveOnlyBtn.TextSize = 16; saveOnlyBtn.Visible = false; Instance.new("UICorner", saveOnlyBtn)
 local clearBtn = Instance.new("TextButton", main); clearBtn.Size = UDim2.new(1, -20, 0, 45); clearBtn.Position = UDim2.new(0, 10, 1, -55); clearBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40); clearBtn.Text = "RESET ALL"; clearBtn.TextColor3 = Color3.new(1, 1, 1); clearBtn.Font = Enum.Font.SourceSansBold; clearBtn.TextSize = 16; clearBtn.Visible = false; Instance.new("UICorner", clearBtn)
@@ -99,25 +90,6 @@ local function clearUI(target)
     LoadedLogsRef = {}
 end
 
-local function addLog(text, code, color, targetScroll, isLoaded)
-    if not isLoaded then table.insert(SessionLogs, code) end
-    local btn = Instance.new("TextButton", targetScroll); btn.Size = UDim2.new(1, -10, 0, 35); btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 45); btn.Text = "  " .. text; btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.SourceSansBold; btn.TextSize = 15; btn.TextXAlignment = Enum.TextXAlignment.Left; btn.ClipsDescendants = true; Instance.new("UICorner", btn)
-    
-    local tick = Instance.new("TextLabel", btn); tick.Size = UDim2.new(0, 40, 1, 0); tick.Position = UDim2.new(1, -45, 0, 0); tick.BackgroundTransparency = 1; tick.Text = ""; tick.TextColor3 = Color3.fromRGB(0, 255, 100); tick.TextSize = 22; tick.Font = Enum.Font.SourceSansBold
-    
-    if isLoaded then
-        -- Store for auto-ticking
-        table.insert(LoadedLogsRef, {Code = code, Tick = tick})
-    end
-
-    btn.MouseButton1Click:Connect(function() 
-        if isLoaded then tick.Text = (tick.Text == "✓") and "" or "✓"
-        else if setclipboard then setclipboard(code) end end
-    end)
-    targetScroll.CanvasSize = UDim2.new(0, 0, 0, targetScroll.UIListLayout.AbsoluteContentSize.Y + 10)
-end
-
--- Function to search loaded logs and tick them based on action
 local function autoTickLog(actionCode)
     for _, data in ipairs(LoadedLogsRef) do
         if data.Tick.Text == "" and data.Code:find(actionCode, 1, true) then
@@ -125,6 +97,20 @@ local function autoTickLog(actionCode)
             break
         end
     end
+end
+
+local function addLog(text, code, color, targetScroll, isLoaded)
+    if not isLoaded then table.insert(SessionLogs, code) end
+    local btn = Instance.new("TextButton", targetScroll); btn.Size = UDim2.new(1, -10, 0, 35); btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 45); btn.Text = "  " .. text; btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.SourceSansBold; btn.TextSize = 15; btn.TextXAlignment = Enum.TextXAlignment.Left; btn.ClipsDescendants = true; Instance.new("UICorner", btn)
+    local tick = Instance.new("TextLabel", btn); tick.Size = UDim2.new(0, 40, 1, 0); tick.Position = UDim2.new(1, -45, 0, 0); tick.BackgroundTransparency = 1; tick.Text = ""; tick.TextColor3 = Color3.fromRGB(0, 255, 100); tick.TextSize = 22; tick.Font = Enum.Font.SourceSansBold
+    
+    if isLoaded then table.insert(LoadedLogsRef, {Code = code, Tick = tick}) end
+
+    btn.MouseButton1Click:Connect(function() 
+        if setclipboard then setclipboard(code) end
+        local oldText = btn.Text; btn.Text = "  COPIED!"; task.wait(0.5); btn.Text = oldText
+    end)
+    targetScroll.CanvasSize = UDim2.new(0, 0, 0, targetScroll.UIListLayout.AbsoluteContentSize.Y + 10)
 end
 
 local function parseScript(content, isLocked)
@@ -141,10 +127,8 @@ local function parseScript(content, isLocked)
         elseif line:find('VoteMode') then addLog("Vote: "..line:match('"(.-)"'), line, Color3.fromRGB(0,150,150), loadScroll, true)
         end
     end
-    
     if isLocked then
-        loadScroll.Size = UDim2.new(1, -20, 1, -115) -- Room for Start button at bottom
-        loadScroll.Position = UDim2.new(0, 10, 0, 50)
+        loadScroll.Size = UDim2.new(1, -20, 1, -115); loadScroll.Position = UDim2.new(0, 10, 0, 50)
         startMenu.Visible = false; backBtn.Visible = false; executeBtn.Visible = false; saveOnlyBtn.Visible = false; clearBtn.Visible = false; title.Text = "STRAT ACTIVE"
     else
         loadScroll.Size = UDim2.new(1, -20, 1, -165); loadScroll.Position = UDim2.new(0, 10, 0, 50)
@@ -153,70 +137,52 @@ local function parseScript(content, isLocked)
     loadScroll.Visible = true
 end
 
-_G.LoadExternalStrat = function(content)
-    if content and content ~= "" then
-        parseScript(content, true)
-        task.wait(0.5)
-        local f = loadstring(content)
-        if f then task.spawn(f) end
-    end
-end
+_G.LoadExternalStrat = function(content) if content and content ~= "" then parseScript(content, true); task.wait(0.5); local f = loadstring(content); if f then task.spawn(f) end end end
 
 local createBtn = Instance.new("TextButton", startMenu); createBtn.Size = UDim2.new(0.85, 0, 0, 60); createBtn.Position = UDim2.new(0.075, 0, 0.25, 0); createBtn.BackgroundColor3 = Color3.fromRGB(40, 120, 40); createBtn.Text = "CREATE NEW SCRIPT"; createBtn.TextColor3 = Color3.new(1, 1, 1); createBtn.Font = Enum.Font.SourceSansBold; createBtn.TextSize = 18; Instance.new("UICorner", createBtn)
 local loadBtn = Instance.new("TextButton", startMenu); loadBtn.Size = UDim2.new(0.85, 0, 0, 60); loadBtn.Position = UDim2.new(0.075, 0, 0.45, 0); loadBtn.BackgroundColor3 = Color3.fromRGB(40, 60, 120); loadBtn.Text = "LOAD SAVED SCRIPT"; loadBtn.TextColor3 = Color3.new(1, 1, 1); loadBtn.Font = Enum.Font.SourceSansBold; loadBtn.TextSize = 18; Instance.new("UICorner", loadBtn)
 
-createBtn.MouseButton1Click:Connect(function()
-    IsCreateMode = true; startMenu.Visible = false; loadScroll.Visible = false; createScroll.Visible = true; saveOnlyBtn.Visible = true; clearBtn.Visible = true; backBtn.Visible = true; executeBtn.Visible = false; title.Text = "CREATING STRAT"
-end)
-
-loadBtn.MouseButton1Click:Connect(function()
+createBtn.MouseButton1Click:Connect(function() IsCreateMode = true; startMenu.Visible = false; loadScroll.Visible = false; createScroll.Visible = true; saveOnlyBtn.Visible = true; clearBtn.Visible = true; backBtn.Visible = true; executeBtn.Visible = false; title.Text = "CREATING STRAT" end)
+loadBtn.MouseButton1Click:Connect(function() 
     IsCreateMode = false; clearUI(loadScroll); startMenu.Visible = false; createScroll.Visible = false; loadScroll.Visible = true; backBtn.Visible = true; executeBtn.Visible = false; title.Text = "SELECT A FILE"
-    if listfiles then
-        for _, file in ipairs(listfiles(FolderName)) do
-            local clean = file:gsub(FolderName.."/", ""):gsub(".lua", "")
-            local f = Instance.new("TextButton", loadScroll); f.Size = UDim2.new(1, -10, 0, 45); f.BackgroundColor3 = Color3.fromRGB(60,60,60); f.Text = clean; f.TextColor3 = Color3.new(1,1,1); f.Font = Enum.Font.SourceSansBold; f.TextSize = 16; Instance.new("UICorner", f)
-            f.MouseButton1Click:Connect(function() parseScript(readfile(file), false) end)
-        end
-    end
+    if listfiles then for _, file in ipairs(listfiles(FolderName)) do local clean = file:gsub(FolderName.."/", ""):gsub(".lua", ""); local f = Instance.new("TextButton", loadScroll); f.Size = UDim2.new(1, -10, 0, 45); f.BackgroundColor3 = Color3.fromRGB(60,60,60); f.Text = clean; f.TextColor3 = Color3.new(1,1,1); f.Font = Enum.Font.SourceSansBold; f.TextSize = 16; Instance.new("UICorner", f); f.MouseButton1Click:Connect(function() parseScript(readfile(file), false) end) end end 
 end)
-
 backBtn.MouseButton1Click:Connect(function() startMenu.Visible = true; createScroll.Visible = false; loadScroll.Visible = false; saveOnlyBtn.Visible = false; clearBtn.Visible = false; backBtn.Visible = false; executeBtn.Visible = false; title.Text = "THU LOGGER" end)
 
-executeBtn.MouseButton1Click:Connect(function() if CurrentLoadedContent ~= "" then local f = loadstring(CurrentLoadedContent) if f then task.spawn(f) end end end)
+executeBtn.MouseButton1Click:Connect(function() if CurrentLoadedContent ~= "" then executeBtn.Visible = false; local f = loadstring(CurrentLoadedContent); if f then task.spawn(f) end end end)
 
 saveOnlyBtn.MouseButton1Click:Connect(function()
     local over = Instance.new("Frame", main); over.Size = UDim2.new(1,0,1,0); over.BackgroundColor3 = Color3.new(0,0,0); over.BackgroundTransparency = 0.5; over.ZIndex = 100; Instance.new("UICorner", over)
     local pop = Instance.new("Frame", over); pop.Size = UDim2.new(0,220,0,120); pop.Position = UDim2.new(0.5,-110,0.5,-60); pop.BackgroundColor3 = Color3.fromRGB(40,40,40); Instance.new("UICorner", pop)
     local box = Instance.new("TextBox", pop); box.Size = UDim2.new(1,-20,0,40); box.Position = UDim2.new(0,10,0,15); box.BackgroundColor3 = Color3.fromRGB(20,20,20); box.PlaceholderText = "Script Name..."; box.Text = ""; box.TextColor3 = Color3.new(1,1,1); box.TextSize = 18; box.Font = Enum.Font.SourceSansBold; Instance.new("UICorner", box)
     local s = Instance.new("TextButton", pop); s.Size = UDim2.new(1,-20,0,35); s.Position = UDim2.new(0,10,1,-45); s.BackgroundColor3 = Color3.fromRGB(0, 120, 200); s.Text = "SAVE"; s.TextColor3 = Color3.new(1,1,1); s.Font = Enum.Font.SourceSansBold; Instance.new("UICorner", s)
-    s.MouseButton1Click:Connect(function()
-        if box.Text ~= "" then
-            writefile(FolderName.."/"..box.Text..".lua", '-- Recorded\nloadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n\n' .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()')
-            over:Destroy(); saveOnlyBtn.Text = "SAVED!"; task.wait(1); saveOnlyBtn.Text = "SAVE STRAT TO FILE"
-        end
-    end)
+    s.MouseButton1Click:Connect(function() if box.Text ~= "" then writefile(FolderName.."/"..box.Text..".lua", '-- Recorded\nloadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n\n' .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()'); over:Destroy(); saveOnlyBtn.Text = "SAVED!"; task.wait(1); saveOnlyBtn.Text = "SAVE STRAT TO FILE" end end)
     local c = Instance.new("TextButton", over); c.Size = UDim2.new(0, 20, 0, 20); c.Position = UDim2.new(0.5, 95, 0.5, -55); c.Text = "X"; c.TextColor3 = Color3.new(1,0,0); c.BackgroundTransparency = 1; c.MouseButton1Click:Connect(function() over:Destroy() end)
+end)
+
+autoSkipObj.Changed:Connect(function(val)
+    if val ~= LastLoggedAutoSkip then
+        LastLoggedAutoSkip = val
+        local cmd = val and "EnableAutoSkip()" or "DisableAutoSkip()"
+        autoTickLog(cmd) -- Sense it for loaded
+        if not title.Text:find("ACTIVE") then addLog("AutoSkip: "..(val and "Enabled" or "Disabled"), cmd, Color3.fromRGB(0, 100, 150), createScroll, false) end
+    end
 end)
 
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}; local method = getnamecallmethod(); local remoteName = tostring(self)
-    
     if method == "FireServer" then
         if remoteName == "ResultEvent" and args[1] == "Retry" then
             task.spawn(function()
-                -- Reset UI for Replay
                 for _, data in ipairs(LoadedLogsRef) do data.Tick.Text = "" end
-                executeBtn.Visible = true
-                executeBtn.Text = "RESTART STRAT"
-                title.Text = "RETRY DETECTED"
+                executeBtn.Visible = true; executeBtn.Text = "START AGAIN"; title.Text = "READY TO REPLAY"
+                TroopCounts = {}; TroopMapping = {}
             end)
         end
-
         task.spawn(function()
             if remoteName == "TroopPlace" and typeof(args[2]) == "Vector3" then
-                local name = args[1].Name; local pos = args[2]
-                autoTickLog('QueuePlace("'..name..'"') -- Auto tick matching line
+                local name = args[1].Name; local pos = args[2]; autoTickLog('QueuePlace("'..name..'"')
                 TroopCounts[name] = (TroopCounts[name] or 0) + 1; local idx = TroopCounts[name]
                 task.delay(0.5, function()
                     for _, v in ipairs(TroopFolder:GetChildren()) do
@@ -225,44 +191,26 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                         end
                     end
                 end)
-                if not title.Text:find("ACTIVE") then addLog("Place " .. name, string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', name, pos.X, pos.Y, pos.Z), Color3.fromRGB(40, 100, 40), createScroll, false) end
+                if not title.Text:find("ACTIVE") then addLog("Place "..name, string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', name, pos.X, pos.Y, pos.Z), Color3.fromRGB(40, 100, 40), createScroll, false) end
             elseif remoteName == "TroopEvent" then
                 local act = args[1]
                 if act == "Upgrade" then
                     local d = TroopMapping[args[2]]
-                    if d then 
-                        d.level = d.level + 1
-                        autoTickLog(string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level))
-                        if not title.Text:find("ACTIVE") then addLog(string.format("Upgrade %s %d", d.name, d.index), string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level), Color3.fromRGB(40, 60, 100), createScroll, false) end
-                    end
+                    if d then d.level = d.level + 1; autoTickLog(string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level))
+                    if not title.Text:find("ACTIVE") then addLog(string.format("Upgrade %s %d", d.name, d.index), string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level), Color3.fromRGB(40, 60, 100), createScroll, false) end end
                 elseif act == "Sell" then
                     local d = TroopMapping[args[2]]
-                    if d then 
-                        autoTickLog(string.format('QueueSell("%s", %d)', d.name, d.index))
-                        if not title.Text:find("ACTIVE") then addLog("Sell " .. d.name, string.format('QueueSell("%s", %d)', d.name, d.index), Color3.fromRGB(150, 50, 50), createScroll, false) end
-                        TroopMapping[args[2]] = nil 
-                    end
+                    if d then autoTickLog(string.format('QueueSell("%s", %d)', d.name, d.index))
+                    if not title.Text:find("ACTIVE") then addLog("Sell "..d.name, string.format('QueueSell("%s", %d)', d.name, d.index), Color3.fromRGB(150, 50, 50), createScroll, false) end; TroopMapping[args[2]] = nil end
                 elseif act == "BulkUp" then
-                    local bn = args[3] or "Unknown"; local cost = 0
-                    autoTickLog('QueueBulk("'..bn..'")')
-                    for _, data in pairs(TroopMapping) do
-                        if data.name == bn then
-                            local nl = data.level + 1; if UpgradePrices[bn] and UpgradePrices[bn][nl] then cost = cost + UpgradePrices[bn][nl] end; data.level = nl
-                        end
-                    end
-                    if not title.Text:find("ACTIVE") then
-                        if cost > 0 then addLog("Wait Mana: " .. cost, string.format('QueueWaitMana(%d)', cost), Color3.fromRGB(100, 100, 40), createScroll, false) end
-                        addLog("Bulk " .. bn, string.format('QueueBulk("%s")', bn), Color3.fromRGB(80, 40, 120), createScroll, false)
-                    end
+                    local bn = args[3] or "Unknown"; local cost = 0; autoTickLog('QueueBulk("'..bn..'")')
+                    for _, data in pairs(TroopMapping) do if data.name == bn then local nl = data.level + 1; if UpgradePrices[bn] and UpgradePrices[bn][nl] then cost = cost + UpgradePrices[bn][nl] end; data.level = nl end end
+                    if not title.Text:find("ACTIVE") then if cost > 0 then addLog("Wait Mana: "..cost, string.format('QueueWaitMana(%d)', cost), Color3.fromRGB(100, 100, 40), createScroll, false) end; addLog("Bulk "..bn, string.format('QueueBulk("%s")', bn), Color3.fromRGB(80, 40, 120), createScroll, false) end
                 end
-            elseif remoteName == "SkipWave" then
-                autoTickLog("QueueSkip()")
-                if autoSkipObj.Value == false and not title.Text:find("ACTIVE") then
-                    addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0), createScroll, false)
-                end
-            elseif remoteName == "ModeVote" then 
-                autoTickLog('VoteMode("'..tostring(args[1])..'"')
-                if not title.Text:find("ACTIVE") then addLog("Vote: " .. tostring(args[1]), string.format('VoteMode("%s")', tostring(args[1])), Color3.fromRGB(0, 150, 150), createScroll, false) end
+            elseif remoteName == "SkipWave" then autoTickLog("QueueSkip()")
+                if autoSkipObj.Value == false and not title.Text:find("ACTIVE") then addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0), createScroll, false) end
+            elseif remoteName == "ModeVote" then autoTickLog('VoteMode("'..tostring(args[1])..'"')
+                if not title.Text:find("ACTIVE") then addLog("Vote: "..tostring(args[1]), string.format('VoteMode("%s")', tostring(args[1])), Color3.fromRGB(0, 150, 150), createScroll, false) end
             end
         end)
     end
@@ -270,12 +218,7 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
 end)
 
 clearBtn.MouseButton1Click:Connect(function()
-    if not ConfirmDelete then 
-        ConfirmDelete = true
-        clearBtn.Text = "Sure? (Sells All)"
-        task.delay(3, function() ConfirmDelete = false; clearBtn.Text = "RESET ALL" end)
-    else 
-        for troopInstance, _ in pairs(TroopMapping) do if troopInstance and troopInstance.Parent then task.spawn(function() TroopEvent:FireServer("Sell", troopInstance) end) end end
-        SessionLogs = {}; TroopCounts = {}; TroopMapping = {}; clearUI(createScroll); ConfirmDelete = false; clearBtn.Text = "CLEARED"; task.wait(1); clearBtn.Text = "RESET ALL" 
-    end
+    if not ConfirmDelete then ConfirmDelete = true; clearBtn.Text = "Sure? (Sells All)"; task.delay(3, function() ConfirmDelete = false; clearBtn.Text = "RESET ALL" end)
+    else for t, _ in pairs(TroopMapping) do if t and t.Parent then task.spawn(function() TroopEvent:FireServer("Sell", t) end) end end
+    SessionLogs = {}; TroopCounts = {}; TroopMapping = {}; clearUI(createScroll); ConfirmDelete = false; clearBtn.Text = "CLEARED"; task.wait(1); clearBtn.Text = "RESET ALL" end
 end)
