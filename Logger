@@ -59,7 +59,7 @@ local pGui = player:WaitForChild("PlayerGui")
 local autoSkipObj = pGui:WaitForChild("Menu"):WaitForChild("Info"):WaitForChild("AutoSkip")
 
 local sg = Instance.new("ScreenGui", pGui)
-sg.Name = "THULogger_V75"
+sg.Name = "THULogger_V76"
 sg.ResetOnSpawn = false
 
 local main = Instance.new("Frame", sg)
@@ -109,7 +109,7 @@ local function addLog(text, code, color, targetScroll, isLoaded)
     targetScroll.CanvasSize = UDim2.new(0, 0, 0, targetScroll.UIListLayout.AbsoluteContentSize.Y + 10)
 end
 
-local function parseScript(content)
+local function parseScript(content, isLocked)
     CurrentLoadedContent = content; clearUI(loadScroll)
     for line in content:gmatch("[^\r\n]+") do
         if line:find('QueuePlace') then addLog("Place "..line:match('"(.-)"'), line, Color3.fromRGB(40,100,40), loadScroll, true)
@@ -123,14 +123,31 @@ local function parseScript(content)
         elseif line:find('VoteMode') then addLog("Vote: "..line:match('"(.-)"'), line, Color3.fromRGB(0,150,150), loadScroll, true)
         end
     end
-    loadScroll.Visible = true; startMenu.Visible = false; backBtn.Visible = true; executeBtn.Visible = true; title.Text = "LOADED STRAT"
+    
+    if isLocked then
+        -- ENTER LOCKED MODE: Remove all navigation and expand the scroll
+        loadScroll.Size = UDim2.new(1, -20, 1, -60)
+        loadScroll.Position = UDim2.new(0, 10, 0, 50)
+        startMenu.Visible = false
+        backBtn.Visible = false
+        executeBtn.Visible = false
+        saveOnlyBtn.Visible = false
+        clearBtn.Visible = false
+        title.Text = "STRAT ACTIVE"
+    else
+        -- NORMAL PREVIEW MODE
+        loadScroll.Size = UDim2.new(1, -20, 1, -165)
+        loadScroll.Position = UDim2.new(0, 10, 0, 50)
+        loadScroll.Visible = true; startMenu.Visible = false; backBtn.Visible = true; executeBtn.Visible = true; title.Text = "LOADED STRAT"
+    end
+    loadScroll.Visible = true
 end
 
--- UPDATED EXTERNAL COMMAND: Now Auto-Starts!
+-- UPDATED EXTERNAL COMMAND: Enters Locked Mode and Starts
 _G.LoadExternalStrat = function(content)
     if content and content ~= "" then
-        parseScript(content)
-        print("Logger: External Strategy Loaded. Auto-Starting...")
+        parseScript(content, true) -- true = locked mode
+        print("Logger: External Strategy Locked and Starting...")
         task.wait(0.5)
         local f = loadstring(content)
         if f then task.spawn(f) end
@@ -150,7 +167,7 @@ loadBtn.MouseButton1Click:Connect(function()
         for _, file in ipairs(listfiles(FolderName)) do
             local clean = file:gsub(FolderName.."/", ""):gsub(".lua", "")
             local f = Instance.new("TextButton", loadScroll); f.Size = UDim2.new(1, -10, 0, 45); f.BackgroundColor3 = Color3.fromRGB(60,60,60); f.Text = clean; f.TextColor3 = Color3.new(1,1,1); f.Font = Enum.Font.SourceSansBold; f.TextSize = 16; Instance.new("UICorner", f)
-            f.MouseButton1Click:Connect(function() parseScript(readfile(file)) end)
+            f.MouseButton1Click:Connect(function() parseScript(readfile(file), false) end)
         end
     end
 end)
@@ -166,7 +183,6 @@ saveOnlyBtn.MouseButton1Click:Connect(function()
     local s = Instance.new("TextButton", pop); s.Size = UDim2.new(1,-20,0,35); s.Position = UDim2.new(0,10,1,-45); s.BackgroundColor3 = Color3.fromRGB(0, 120, 200); s.Text = "SAVE"; s.TextColor3 = Color3.new(1,1,1); s.Font = Enum.Font.SourceSansBold; Instance.new("UICorner", s)
     s.MouseButton1Click:Connect(function()
         if box.Text ~= "" then
-            -- USES THE UPDATED ENGINE LINK HERE
             writefile(FolderName.."/"..box.Text..".lua", '-- Recorded\nloadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n\n' .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()')
             over:Destroy(); saveOnlyBtn.Text = "SAVED!"; task.wait(1); saveOnlyBtn.Text = "SAVE STRAT TO FILE"
         end
