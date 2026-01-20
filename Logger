@@ -7,6 +7,7 @@ local TroopEvent = RS:WaitForChild("Events"):WaitForChild("TroopEvent")
 local SessionLogs = {}
 local TroopCounts = {}
 local TroopMapping = {} 
+local LoadedLogsRef = {} -- Stores UI references for ticking
 local LastLoggedAutoSkip = nil 
 local ConfirmDelete = false
 local FolderName = "UTH Logged Strats"
@@ -59,7 +60,7 @@ local pGui = player:WaitForChild("PlayerGui")
 local autoSkipObj = pGui:WaitForChild("Menu"):WaitForChild("Info"):WaitForChild("AutoSkip")
 
 local sg = Instance.new("ScreenGui", pGui)
-sg.Name = "THULogger_V76"
+sg.Name = "THULogger_V77"
 sg.ResetOnSpawn = false
 
 local main = Instance.new("Frame", sg)
@@ -95,6 +96,7 @@ local executeBtn = Instance.new("TextButton", main); executeBtn.Size = UDim2.new
 local function clearUI(target)
     for _, v in ipairs(target:GetChildren()) do if v:IsA("GuiObject") then v:Destroy() end end
     Instance.new("UIListLayout", target).Padding = UDim.new(0, 5)
+    LoadedLogsRef = {}
 end
 
 local function addLog(text, code, color, targetScroll, isLoaded)
@@ -102,11 +104,27 @@ local function addLog(text, code, color, targetScroll, isLoaded)
     local btn = Instance.new("TextButton", targetScroll); btn.Size = UDim2.new(1, -10, 0, 35); btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 45); btn.Text = "  " .. text; btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.SourceSansBold; btn.TextSize = 15; btn.TextXAlignment = Enum.TextXAlignment.Left; btn.ClipsDescendants = true; Instance.new("UICorner", btn)
     
     local tick = Instance.new("TextLabel", btn); tick.Size = UDim2.new(0, 40, 1, 0); tick.Position = UDim2.new(1, -45, 0, 0); tick.BackgroundTransparency = 1; tick.Text = ""; tick.TextColor3 = Color3.fromRGB(0, 255, 100); tick.TextSize = 22; tick.Font = Enum.Font.SourceSansBold
+    
+    if isLoaded then
+        -- Store for auto-ticking
+        table.insert(LoadedLogsRef, {Code = code, Tick = tick})
+    end
+
     btn.MouseButton1Click:Connect(function() 
         if isLoaded then tick.Text = (tick.Text == "✓") and "" or "✓"
         else if setclipboard then setclipboard(code) end end
     end)
     targetScroll.CanvasSize = UDim2.new(0, 0, 0, targetScroll.UIListLayout.AbsoluteContentSize.Y + 10)
+end
+
+-- Function to search loaded logs and tick them based on action
+local function autoTickLog(actionCode)
+    for _, data in ipairs(LoadedLogsRef) do
+        if data.Tick.Text == "" and data.Code:find(actionCode, 1, true) then
+            data.Tick.Text = "✓"
+            break
+        end
+    end
 end
 
 local function parseScript(content, isLocked)
@@ -125,29 +143,19 @@ local function parseScript(content, isLocked)
     end
     
     if isLocked then
-        -- ENTER LOCKED MODE: Remove all navigation and expand the scroll
-        loadScroll.Size = UDim2.new(1, -20, 1, -60)
+        loadScroll.Size = UDim2.new(1, -20, 1, -115) -- Room for Start button at bottom
         loadScroll.Position = UDim2.new(0, 10, 0, 50)
-        startMenu.Visible = false
-        backBtn.Visible = false
-        executeBtn.Visible = false
-        saveOnlyBtn.Visible = false
-        clearBtn.Visible = false
-        title.Text = "STRAT ACTIVE"
+        startMenu.Visible = false; backBtn.Visible = false; executeBtn.Visible = false; saveOnlyBtn.Visible = false; clearBtn.Visible = false; title.Text = "STRAT ACTIVE"
     else
-        -- NORMAL PREVIEW MODE
-        loadScroll.Size = UDim2.new(1, -20, 1, -165)
-        loadScroll.Position = UDim2.new(0, 10, 0, 50)
+        loadScroll.Size = UDim2.new(1, -20, 1, -165); loadScroll.Position = UDim2.new(0, 10, 0, 50)
         loadScroll.Visible = true; startMenu.Visible = false; backBtn.Visible = true; executeBtn.Visible = true; title.Text = "LOADED STRAT"
     end
     loadScroll.Visible = true
 end
 
--- UPDATED EXTERNAL COMMAND: Enters Locked Mode and Starts
 _G.LoadExternalStrat = function(content)
     if content and content ~= "" then
-        parseScript(content, true) -- true = locked mode
-        print("Logger: External Strategy Locked and Starting...")
+        parseScript(content, true)
         task.wait(0.5)
         local f = loadstring(content)
         if f then task.spawn(f) end
@@ -190,26 +198,26 @@ saveOnlyBtn.MouseButton1Click:Connect(function()
     local c = Instance.new("TextButton", over); c.Size = UDim2.new(0, 20, 0, 20); c.Position = UDim2.new(0.5, 95, 0.5, -55); c.Text = "X"; c.TextColor3 = Color3.new(1,0,0); c.BackgroundTransparency = 1; c.MouseButton1Click:Connect(function() over:Destroy() end)
 end)
 
-local function initAutoSkipSensor()
-    autoSkipObj.Changed:Connect(function(val)
-        if val ~= LastLoggedAutoSkip then
-            LastLoggedAutoSkip = val
-            local st = val and "Enabled" or "Disabled"
-            local cmd = val and "EnableAutoSkip()" or "DisableAutoSkip()"
-            addLog("AutoSkip: " .. st, cmd, Color3.fromRGB(0, 100, 150), createScroll, false)
-        end
-    end)
-    LastLoggedAutoSkip = autoSkipObj.Value
-end
-task.spawn(initAutoSkipSensor)
-
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}; local method = getnamecallmethod(); local remoteName = tostring(self)
+    
     if method == "FireServer" then
+        if remoteName == "ResultEvent" and args[1] == "Retry" then
+            task.spawn(function()
+                -- Reset UI for Replay
+                for _, data in ipairs(LoadedLogsRef) do data.Tick.Text = "" end
+                executeBtn.Visible = true
+                executeBtn.Text = "RESTART STRAT"
+                title.Text = "RETRY DETECTED"
+            end)
+        end
+
         task.spawn(function()
             if remoteName == "TroopPlace" and typeof(args[2]) == "Vector3" then
-                local name = args[1].Name; local pos = args[2]; TroopCounts[name] = (TroopCounts[name] or 0) + 1; local idx = TroopCounts[name]
+                local name = args[1].Name; local pos = args[2]
+                autoTickLog('QueuePlace("'..name..'"') -- Auto tick matching line
+                TroopCounts[name] = (TroopCounts[name] or 0) + 1; local idx = TroopCounts[name]
                 task.delay(0.5, function()
                     for _, v in ipairs(TroopFolder:GetChildren()) do
                         if v.Name == name and not TroopMapping[v] and (v:GetModelCFrame().Position - pos).Magnitude < 5 then
@@ -217,30 +225,44 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                         end
                     end
                 end)
-                addLog("Place " .. name, string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', name, pos.X, pos.Y, pos.Z), Color3.fromRGB(40, 100, 40), createScroll, false)
+                if not title.Text:find("ACTIVE") then addLog("Place " .. name, string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', name, pos.X, pos.Y, pos.Z), Color3.fromRGB(40, 100, 40), createScroll, false) end
             elseif remoteName == "TroopEvent" then
                 local act = args[1]
                 if act == "Upgrade" then
                     local d = TroopMapping[args[2]]
-                    if d then d.level = d.level + 1; addLog(string.format("Upgrade %s %d", d.name, d.index), string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level), Color3.fromRGB(40, 60, 100), createScroll, false) end
+                    if d then 
+                        d.level = d.level + 1
+                        autoTickLog(string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level))
+                        if not title.Text:find("ACTIVE") then addLog(string.format("Upgrade %s %d", d.name, d.index), string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level), Color3.fromRGB(40, 60, 100), createScroll, false) end
+                    end
                 elseif act == "Sell" then
                     local d = TroopMapping[args[2]]
-                    if d then addLog("Sell " .. d.name, string.format('QueueSell("%s", %d)', d.name, d.index), Color3.fromRGB(150, 50, 50), createScroll, false); TroopMapping[args[2]] = nil end
+                    if d then 
+                        autoTickLog(string.format('QueueSell("%s", %d)', d.name, d.index))
+                        if not title.Text:find("ACTIVE") then addLog("Sell " .. d.name, string.format('QueueSell("%s", %d)', d.name, d.index), Color3.fromRGB(150, 50, 50), createScroll, false) end
+                        TroopMapping[args[2]] = nil 
+                    end
                 elseif act == "BulkUp" then
                     local bn = args[3] or "Unknown"; local cost = 0
+                    autoTickLog('QueueBulk("'..bn..'")')
                     for _, data in pairs(TroopMapping) do
                         if data.name == bn then
                             local nl = data.level + 1; if UpgradePrices[bn] and UpgradePrices[bn][nl] then cost = cost + UpgradePrices[bn][nl] end; data.level = nl
                         end
                     end
-                    if cost > 0 then addLog("Wait Mana: " .. cost, string.format('QueueWaitMana(%d)', cost), Color3.fromRGB(100, 100, 40), createScroll, false) end
-                    addLog("Bulk " .. bn, string.format('QueueBulk("%s")', bn), Color3.fromRGB(80, 40, 120), createScroll, false)
+                    if not title.Text:find("ACTIVE") then
+                        if cost > 0 then addLog("Wait Mana: " .. cost, string.format('QueueWaitMana(%d)', cost), Color3.fromRGB(100, 100, 40), createScroll, false) end
+                        addLog("Bulk " .. bn, string.format('QueueBulk("%s")', bn), Color3.fromRGB(80, 40, 120), createScroll, false)
+                    end
                 end
             elseif remoteName == "SkipWave" then
-                if autoSkipObj.Value == false then
+                autoTickLog("QueueSkip()")
+                if autoSkipObj.Value == false and not title.Text:find("ACTIVE") then
                     addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0), createScroll, false)
                 end
-            elseif remoteName == "ModeVote" then addLog("Vote: " .. tostring(args[1]), string.format('VoteMode("%s")', tostring(args[1])), Color3.fromRGB(0, 150, 150), createScroll, false)
+            elseif remoteName == "ModeVote" then 
+                autoTickLog('VoteMode("'..tostring(args[1])..'"')
+                if not title.Text:find("ACTIVE") then addLog("Vote: " .. tostring(args[1]), string.format('VoteMode("%s")', tostring(args[1])), Color3.fromRGB(0, 150, 150), createScroll, false) end
             end
         end)
     end
@@ -251,18 +273,9 @@ clearBtn.MouseButton1Click:Connect(function()
     if not ConfirmDelete then 
         ConfirmDelete = true
         clearBtn.Text = "Sure? (Sells All)"
-        task.delay(3, function() 
-            ConfirmDelete = false 
-            clearBtn.Text = "RESET ALL" 
-        end)
+        task.delay(3, function() ConfirmDelete = false; clearBtn.Text = "RESET ALL" end)
     else 
-        for troopInstance, _ in pairs(TroopMapping) do
-            if troopInstance and troopInstance.Parent then
-                task.spawn(function()
-                    TroopEvent:FireServer("Sell", troopInstance)
-                end)
-            end
-        end
-        SessionLogs = {}; TroopCounts = {}; TroopMapping = {}; clearUI(createScroll); ConfirmDelete = false; clearBtn.Text = "CLEARED & SOLD"; task.wait(1); clearBtn.Text = "RESET ALL" 
+        for troopInstance, _ in pairs(TroopMapping) do if troopInstance and troopInstance.Parent then task.spawn(function() TroopEvent:FireServer("Sell", troopInstance) end) end end
+        SessionLogs = {}; TroopCounts = {}; TroopMapping = {}; clearUI(createScroll); ConfirmDelete = false; clearBtn.Text = "CLEARED"; task.wait(1); clearBtn.Text = "RESET ALL" 
     end
 end)
