@@ -57,7 +57,7 @@ local State = {
     OwnedByName = {},     
 }
 
--- Utility Functions
+--- Utility Functions
 local function getMana()
     local gui = PlayerGui:FindFirstChild("Amount", true)
     return gui and tonumber(gui.Text:gsub(",", ""):match("%d+")) or 0
@@ -68,20 +68,10 @@ local function getSkipValue()
     return gui and tonumber(gui.Text:match("(%d+)")) or nil
 end
 
-local function getTroopLevel(model)
-    local stats = model:FindFirstChild("Stats")
-    local lvObj = stats and stats:FindFirstChild("Level")
-    if lvObj then
-        if lvObj:IsA("NumberValue") or lvObj:IsA("IntValue") then return lvObj.Value end
-        return tonumber(lvObj.Text:match("%d+")) or 1
-    end
-    return 1
-end
-
--- Improved tracking using UnitSeed (Matches Logger logic)
 local function trackTroop(name, pos)
     local closest, bestDist = nil, 5
     for _, troop in ipairs(TroopFolder:GetChildren()) do
+        -- Only match by name and distance, ignoring any visual skin checks
         if troop.Name == name and not State.Tracked[troop] then
             local dist = (troop:GetModelCFrame().Position - pos).Magnitude
             if dist < bestDist then bestDist = dist; closest = troop end
@@ -109,21 +99,19 @@ local function runAutoSkipUI(targetState)
     end
 end
 
--- Global Commands (Updated to match Logger output)
+--- Global Commands
 getgenv().EnableAutoSkip = function() table.insert(State.EventQueue, {type = "toggle_autoskip", target = true}) end
 getgenv().DisableAutoSkip = function() table.insert(State.EventQueue, {type = "toggle_autoskip", target = false}) end
 getgenv().QueuePlace = function(name, x, y, z) table.insert(State.EventQueue, {type = "place", name = name, pos = Vector3.new(x, y, z)}) end
 getgenv().QueueUpgrade = function(name, index, level) table.insert(State.EventQueue, {type = "upgrade", name = name, index = index, level = level}) end
 getgenv().QueueAbility = function(name, index) table.insert(State.EventQueue, {type = "ability", name = name, index = index}) end
 getgenv().QueueTarget = function(name, index, mode) table.insert(State.EventQueue, {type = "target", name = name, index = index, mode = mode}) end
-getgenv().QueueBulk = function(name) table.insert(State.EventQueue, {type = "smart_bulk", name = name}) end
 getgenv().QueueWaitMana = function(amt) table.insert(State.EventQueue, {type = "wait_mana", amount = amt}) end
 getgenv().QueueSkip = function() table.insert(State.EventQueue, {type = "skip"}) end
 getgenv().QueueSell = function(name, index) table.insert(State.EventQueue, {type = "sell", name = name, index = index}) end
-getgenv().QueueBulkSell = function(name) table.insert(State.EventQueue, {type = "bulk_sell", name = name}) end
 getgenv().VoteMode = function(mode) table.insert(State.EventQueue, {type = "mode", mode = mode}) end
 
--- Execution Engine
+--- Execution Engine
 getgenv().StartAutomation = function()
     if State.Running then return end
     State.Running = true
@@ -158,62 +146,56 @@ getgenv().StartAutomation = function()
                     local temp = HeroFolder:FindFirstChild(taskData.name)
                     if temp then
                         TroopPlace:FireServer(temp, taskData.pos, 0)
-                        task.wait(0.3)
+                        task.wait(0.4) -- Longer wait to ensure server registers placement
                         trackTroop(taskData.name, taskData.pos)
                     end
                 end
 
             elseif taskData.type == "upgrade" then
-                local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
-                if t and t.Parent == TroopFolder then
-                    table.remove(State.EventQueue, 1)
-                    TroopEvent:FireServer("Upgrade", t)
-                    task.wait(0.1)
+                local troopList = State.OwnedByName[taskData.name] or {}
+                local unit = troopList[taskData.index]
+                
+                -- Basic check: Does the unit exist and is it still in the workspace?
+                if unit and unit.Parent == TroopFolder then
+                    local level = taskData.level or 1
+                    local price = (UpgradePrices[taskData.name] and UpgradePrices[taskData.name][level]) or 0
+                    
+                    if currentMana >= price then
+                        table.remove(State.EventQueue, 1)
+                        TroopEvent:FireServer("Upgrade", unit)
+                        task.wait(0.2)
+                    end
                 else
-                    table.remove(State.EventQueue, 1) -- Troop gone
+                    -- Unit missing or destroyed, skip task
+                    table.remove(State.EventQueue, 1)
                 end
 
             elseif taskData.type == "ability" then
-                local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
-                if t and t.Parent == TroopFolder then
+                local unit = (State.OwnedByName[taskData.name] or {})[taskData.index]
+                if unit and unit.Parent == TroopFolder then
                     table.remove(State.EventQueue, 1)
-                    TroopEvent:FireServer("Ability", t)
-                    task.wait(0.1)
+                    TroopEvent:FireServer("Ability", unit)
                 else
                     table.remove(State.EventQueue, 1)
                 end
 
             elseif taskData.type == "target" then
-                local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
-                if t and t.Parent == TroopFolder then
+                local unit = (State.OwnedByName[taskData.name] or {})[taskData.index]
+                if unit and unit.Parent == TroopFolder then
                     table.remove(State.EventQueue, 1)
-                    UpdateTargeting:FireServer(t, taskData.mode)
-                    task.wait(0.1)
+                    UpdateTargeting:FireServer(unit, taskData.mode)
                 else
                     table.remove(State.EventQueue, 1)
                 end
 
             elseif taskData.type == "sell" then
-                local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
-                if t then
-                    TroopEvent:FireServer("Sell", t)
+                local unit = (State.OwnedByName[taskData.name] or {})[taskData.index]
+                if unit then
+                    TroopEvent:FireServer("Sell", unit)
+                    State.Tracked[unit] = nil
                     table.remove(State.OwnedByName[taskData.name], taskData.index)
-                    State.Tracked[t] = nil
                 end
                 table.remove(State.EventQueue, 1)
-                task.wait(0.1)
-
-            elseif taskData.type == "bulk_sell" then
-                table.remove(State.EventQueue, 1)
-                local units = State.OwnedByName[taskData.name] or {}
-                for _, u in ipairs(units) do
-                    if u and u.Parent == TroopFolder then
-                        TroopEvent:FireServer("Sell", u)
-                        State.Tracked[u] = nil
-                    end
-                end
-                State.OwnedByName[taskData.name] = {}
-                task.wait(0.2)
             end
             task.wait(0.1)
         end
