@@ -3,15 +3,16 @@ local RS = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 
 local Events = RS:WaitForChild("Events")
-local TroopPlace = Events:WaitForChild("TroopPlace")     
-local TroopEvent = Events:WaitForChild("TroopEvent")     
-local SkipWaveRemote = Events:WaitForChild("SkipWave")   
+local TroopPlace = Events:WaitForChild("TroopPlace")
+local TroopEvent = Events:WaitForChild("TroopEvent")
+local SkipWaveRemote = Events:WaitForChild("SkipWave")
 local ModeVote = Events:WaitForChild("ModeVote")
 
 local TroopFolder = workspace:WaitForChild("Troop")
 local HeroFolder = RS:WaitForChild("Troops")
 local PlayerGui = player:WaitForChild("PlayerGui")
 
+-- Upgrade prices by hero and level
 local UpgradePrices = {
     ["Chef"] = {[1] = 110, [2] = 1000, [3] = 2200, [4] = 3700, [5] = 6000},
     ["Wizard"] = {[1] = 100, [2] = 430, [3] = 1500, [4] = 2400, [5] = 4500},
@@ -50,13 +51,18 @@ local UpgradePrices = {
 }
 
 local State = {
-    EventQueue = {},      
+    EventQueue = {},
     Running = false,
-    Tracked = {},         
-    OwnedByName = {},     
+    Tracked = {},
+    OwnedByName = {},
 }
 
--- Utility Functions
+-- Bidirectional mapping for hero ↔ unitID ↔ skin
+local UnitIDToHero = {}
+local HeroToUnitIDs = {}
+local UnitIDToSkin = {}
+
+-- Utility functions
 local function getMana()
     local gui = PlayerGui:FindFirstChild("Amount", true)
     return gui and tonumber(gui.Text:match("%d+")) or 0
@@ -71,7 +77,9 @@ local function getTroopLevel(model)
     local stats = model:FindFirstChild("Stats")
     local lvObj = stats and stats:FindFirstChild("Level")
     if lvObj then
-        if lvObj:IsA("NumberValue") or lvObj:IsA("IntValue") then return lvObj.Value end
+        if lvObj:IsA("NumberValue") or lvObj:IsA("IntValue") then
+            return lvObj.Value
+        end
         return tonumber(lvObj.Text:match("%d+")) or 1
     end
     return 1
@@ -82,7 +90,10 @@ local function trackTroop(name, pos)
     for _, troop in ipairs(TroopFolder:GetChildren()) do
         if troop.Name == name and not State.Tracked[troop] then
             local dist = (troop:GetModelCFrame().Position - pos).Magnitude
-            if dist < bestDist then bestDist = dist; closest = troop end
+            if dist < bestDist then
+                bestDist = dist
+                closest = troop
+            end
         end
     end
     if closest then
@@ -94,13 +105,24 @@ local function trackTroop(name, pos)
     return false
 end
 
--- Fixed State-Sensing Toggle
+-- State-sensing toggle for AutoSkip
 local function runAutoSkipUI(targetState)
-    local autoSkipObj = PlayerGui:FindFirstChild("Menu"):FindFirstChild("Info"):FindFirstChild("AutoSkip")
+    local menu = PlayerGui:FindFirstChild("Menu")
+    if not menu then return end
+
+    local info = menu:FindFirstChild("Info")
+    if not info then return end
+
+    local autoSkipObj = info:FindFirstChild("AutoSkip")
     local skipBtn = PlayerGui:FindFirstChild("CheckBoxSKIP", true)
-    
+
     if autoSkipObj and skipBtn and autoSkipObj.Value ~= targetState then
-        local fakeInput = {UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin, KeyCode = Enum.KeyCode.Unknown, Position = Vector3.new(0,0,0)}
+        local fakeInput = {
+            UserInputType = Enum.UserInputType.MouseButton1,
+            UserInputState = Enum.UserInputState.Begin,
+            KeyCode = Enum.KeyCode.Unknown,
+            Position = Vector3.new(0, 0, 0)
+        }
         local events = {"Activated", "MouseButton1Click"}
         for _, eventName in ipairs(events) do
             local signal = skipBtn[eventName]
@@ -113,18 +135,57 @@ local function runAutoSkipUI(targetState)
     end
 end
 
--- Global Commands
-getgenv().EnableAutoSkip = function() table.insert(State.EventQueue, {type = "toggle_autoskip", target = true}) end
-getgenv().DisableAutoSkip = function() table.insert(State.EventQueue, {type = "toggle_autoskip", target = false}) end
-getgenv().QueuePlace = function(name, x, y, z) table.insert(State.EventQueue, {type = "place", name = name, pos = Vector3.new(x, y, z)}) end
-getgenv().QueueUpgrade = function(name, index, level) table.insert(State.EventQueue, {type = "upgrade", name = name, index = index, level = level}) end
-getgenv().QueueBulk = function(name) table.insert(State.EventQueue, {type = "smart_bulk", name = name}) end
-getgenv().QueueWaitMana = function(amt) table.insert(State.EventQueue, {type = "wait_mana", amount = amt}) end
-getgenv().QueueSkip = function() table.insert(State.EventQueue, {type = "skip"}) end
-getgenv().QueueSell = function(name, index) table.insert(State.EventQueue, {type = "sell", name = name, index = index}) end
-getgenv().VoteMode = function(mode) table.insert(State.EventQueue, {type = "mode", mode = mode}) end
+-- Mapping helpers
+local function GetUnitIDFromHero(heroName)
+    local list = HeroToUnitIDs[heroName]
+    if list and #list > 0 then
+        return list[1]
+    end
+    return nil
+end
 
--- Execution Engine
+local function GetAllUnitIDsFromHero(heroName)
+    return HeroToUnitIDs[heroName] or {}
+end
+
+-- Global commands
+getgenv().EnableAutoSkip = function()
+    table.insert(State.EventQueue, {type = "toggle_autoskip", target = true})
+end
+
+getgenv().DisableAutoSkip = function()
+    table.insert(State.EventQueue, {type = "toggle_autoskip", target = false})
+end
+
+getgenv().QueuePlace = function(name, x, y, z)
+    table.insert(State.EventQueue, {type = "place", name = name, pos = Vector3.new(x, y, z)})
+end
+
+getgenv().QueueUpgrade = function(name, index, level)
+    table.insert(State.EventQueue, {type = "upgrade", name = name, index = index, level = level})
+end
+
+getgenv().QueueBulk = function(name)
+    table.insert(State.EventQueue, {type = "smart_bulk", name = name})
+end
+
+getgenv().QueueWaitMana = function(amt)
+    table.insert(State.EventQueue, {type = "wait_mana", amount = amt})
+end
+
+getgenv().QueueSkip = function()
+    table.insert(State.EventQueue, {type = "skip"})
+end
+
+getgenv().QueueSell = function(name, index)
+    table.insert(State.EventQueue, {type = "sell", name = name, index = index})
+end
+
+getgenv().VoteMode = function(mode)
+    table.insert(State.EventQueue, {type = "mode", mode = mode})
+end
+
+-- Execution engine
 getgenv().StartAutomation = function()
     if State.Running then return end
     State.Running = true
@@ -135,7 +196,9 @@ getgenv().StartAutomation = function()
             local currentMana = getMana()
 
             if taskData.type == "wait_mana" then
-                if currentMana >= taskData.amount then table.remove(State.EventQueue, 1) end
+                if currentMana >= taskData.amount then
+                    table.remove(State.EventQueue, 1)
+                end
 
             elseif taskData.type == "toggle_autoskip" then
                 table.remove(State.EventQueue, 1)
@@ -158,9 +221,38 @@ getgenv().StartAutomation = function()
                     table.remove(State.EventQueue, 1)
                     local temp = HeroFolder:FindFirstChild(taskData.name)
                     if temp then
+                        -- Fire placement
                         TroopPlace:FireServer(temp, taskData.pos, 0)
+
+                        -- Wait for the unit to appear
                         task.wait(0.3)
-                        trackTroop(taskData.name, taskData.pos)
+
+                        -- Find closest troop to placement position (any skin)
+                        local closest, bestDist = nil, 5
+                        for _, troop in ipairs(TroopFolder:GetChildren()) do
+                            local dist = (troop:GetModelCFrame().Position - taskData.pos).Magnitude
+                            if dist < bestDist then
+                                bestDist = dist
+                                closest = troop
+                            end
+                        end
+
+                        if closest then
+                            local unitID = closest:GetAttribute("UnitSeed")
+                            local skinName = closest.Name
+                            local heroName = taskData.name
+
+                            if unitID then
+                                UnitIDToHero[unitID] = heroName
+                                UnitIDToSkin[unitID] = skinName
+                                HeroToUnitIDs[heroName] = HeroToUnitIDs[heroName] or {}
+                                table.insert(HeroToUnitIDs[heroName], unitID)
+                            end
+
+                            State.Tracked[closest] = true
+                            State.OwnedByName[heroName] = State.OwnedByName[heroName] or {}
+                            table.insert(State.OwnedByName[heroName], closest)
+                        end
                     end
                 end
 
@@ -170,10 +262,13 @@ getgenv().StartAutomation = function()
                     local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
                     if t and t.Parent == TroopFolder then
                         table.remove(State.EventQueue, 1)
-                        TroopEvent:FireServer("Upgrade", t)
+                        local unitID = t:GetAttribute("UnitSeed")
+                        if unitID then
+                            TroopEvent:FireServer("Upgrade", unitID)
+                        end
                         task.wait(0.1)
                     else
-                        table.remove(State.EventQueue, 1) -- Troop died/gone
+                        table.remove(State.EventQueue, 1)
                     end
                 end
 
@@ -186,12 +281,17 @@ getgenv().StartAutomation = function()
                         table.insert(toUpgrade, {model = u, level = getTroopLevel(u)})
                     end
                 end
-                table.sort(toUpgrade, function(a, b) return a.level > b.level end)
+                table.sort(toUpgrade, function(a, b)
+                    return a.level > b.level
+                end)
                 for _, data in ipairs(toUpgrade) do
                     local nextLv = data.level + 1
                     local upCost = (UpgradePrices[taskData.name] and UpgradePrices[taskData.name][nextLv]) or 999999
                     if getMana() >= upCost then
-                        TroopEvent:FireServer("Upgrade", data.model)
+                        local unitID = data.model:GetAttribute("UnitSeed")
+                        if unitID then
+                            TroopEvent:FireServer("Upgrade", unitID)
+                        end
                         task.wait(0.05)
                     end
                 end
@@ -199,15 +299,20 @@ getgenv().StartAutomation = function()
             elseif taskData.type == "sell" then
                 local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
                 if t then
-                    TroopEvent:FireServer("Sell", t)
+                    local unitID = t:GetAttribute("UnitSeed")
+                    if unitID then
+                        TroopEvent:FireServer("Sell", unitID)
+                    end
                     table.remove(State.OwnedByName[taskData.name], taskData.index)
                     State.Tracked[t] = nil
                 end
                 table.remove(State.EventQueue, 1)
                 task.wait(0.1)
             end
+
             task.wait(0.1)
         end
+
         State.Running = false
     end)
 end
