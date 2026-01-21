@@ -20,7 +20,7 @@ local FolderName = "UTH Logged Strats"
 local CurrentLoadedContent = ""
 local IsCreateMode = false
 
-local ENGINE_LINK = "https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/heads/main/Engine"
+local ENGINE_LINK = "https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/Engine"
 
 if makefolder then makefolder(FolderName) end
 
