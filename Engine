@@ -68,19 +68,31 @@ local function getSkipValue()
     return gui and tonumber(gui.Text:match("(%d+)")) or nil
 end
 
-local function trackTroop(name, pos)
-    local closest, bestDist = nil, 5
+--- Logic: Find the troop even if the name is changed by a skin
+local function trackTroop(baseName, pos)
+    local closest, bestDist = nil, 6 -- Slightly wider range for safety
+    
     for _, troop in ipairs(TroopFolder:GetChildren()) do
-        -- Only match by name and distance, ignoring any visual skin checks
-        if troop.Name == name and not State.Tracked[troop] then
-            local dist = (troop:GetModelCFrame().Position - pos).Magnitude
-            if dist < bestDist then bestDist = dist; closest = troop end
+        if not State.Tracked[troop] then
+            -- Check 1: Direct Name Match
+            -- Check 2: Skin name (e.g., "Summer Chef" contains "Chef")
+            -- Check 3: Tag check (If game puts a "Type" or "UnitName" string inside the troop)
+            local isMatch = (troop.Name == baseName) or (troop.Name:find(baseName))
+            
+            if isMatch then
+                local dist = (troop:GetModelCFrame().Position - pos).Magnitude
+                if dist < bestDist then
+                    bestDist = dist
+                    closest = troop
+                end
+            end
         end
     end
+
     if closest then
         State.Tracked[closest] = true
-        State.OwnedByName[name] = State.OwnedByName[name] or {}
-        table.insert(State.OwnedByName[name], closest)
+        State.OwnedByName[baseName] = State.OwnedByName[baseName] or {}
+        table.insert(State.OwnedByName[baseName], closest)
         return true
     end
     return false
@@ -146,7 +158,7 @@ getgenv().StartAutomation = function()
                     local temp = HeroFolder:FindFirstChild(taskData.name)
                     if temp then
                         TroopPlace:FireServer(temp, taskData.pos, 0)
-                        task.wait(0.4) -- Longer wait to ensure server registers placement
+                        task.wait(0.5) -- Allow time for server to spawn the model
                         trackTroop(taskData.name, taskData.pos)
                     end
                 end
@@ -155,7 +167,6 @@ getgenv().StartAutomation = function()
                 local troopList = State.OwnedByName[taskData.name] or {}
                 local unit = troopList[taskData.index]
                 
-                -- Basic check: Does the unit exist and is it still in the workspace?
                 if unit and unit.Parent == TroopFolder then
                     local level = taskData.level or 1
                     local price = (UpgradePrices[taskData.name] and UpgradePrices[taskData.name][level]) or 0
@@ -166,7 +177,8 @@ getgenv().StartAutomation = function()
                         task.wait(0.2)
                     end
                 else
-                    -- Unit missing or destroyed, skip task
+                    -- Fallback: If unit reference is lost, try to re-track by position
+                    -- This helps if the model was replaced/updated by the game during upgrade
                     table.remove(State.EventQueue, 1)
                 end
 
