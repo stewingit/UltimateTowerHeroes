@@ -13,6 +13,26 @@ local TroopFolder = workspace:WaitForChild("Troop")
 local HeroFolder = RS:WaitForChild("Troops")
 local PlayerGui = player:WaitForChild("PlayerGui")
 
+---------------------------------------------------------------------
+--  BIDIRECTIONAL HERO / SKIN / UNITID MAPPING SYSTEM
+---------------------------------------------------------------------
+local UnitIDToHero = {}
+local HeroToUnitIDs = {}
+local UnitIDToSkin = {}
+
+-- Logic to register the troop when placed
+local function RegisterPlacement(heroInstance, unitID, skinName)
+    local heroName = heroInstance.Name
+    
+    UnitIDToHero[unitID] = heroName
+    HeroToUnitIDs[heroName] = HeroToUnitIDs[heroName] or {}
+    table.insert(HeroToUnitIDs[heroName], unitID)
+    UnitIDToSkin[unitID] = skinName
+end
+
+---------------------------------------------------------------------
+--  ENGINE CONFIGURATION
+---------------------------------------------------------------------
 local UpgradePrices = {
     ["Chef"] = {[1] = 110, [2] = 1000, [3] = 2200, [4] = 3700, [5] = 6000},
     ["Wizard"] = {[1] = 100, [2] = 430, [3] = 1500, [4] = 2400, [5] = 4500},
@@ -68,18 +88,18 @@ local function getSkipValue()
     return gui and tonumber(gui.Text:match("(%d+)")) or nil
 end
 
---- Logic: Find the troop even if the name is changed by a skin
+--- Logic: Find the troop using both Distance and UnitSeed attributes
 local function trackTroop(baseName, pos)
-    local closest, bestDist = nil, 6 -- Slightly wider range for safety
+    local closest, bestDist = nil, 6 
     
     for _, troop in ipairs(TroopFolder:GetChildren()) do
         if not State.Tracked[troop] then
-            -- Check 1: Direct Name Match
-            -- Check 2: Skin name (e.g., "Summer Chef" contains "Chef")
-            -- Check 3: Tag check (If game puts a "Type" or "UnitName" string inside the troop)
-            local isMatch = (troop.Name == baseName) or (troop.Name:find(baseName))
-            
-            if isMatch then
+            -- Match by distance and check if this unit belongs to the hero via seed
+            local seed = troop:GetAttribute("UnitSeed")
+            local nameMatch = (troop.Name == baseName) or (troop.Name:find(baseName))
+            local seedMatch = seed and UnitIDToHero[seed] == baseName
+
+            if nameMatch or seedMatch then
                 local dist = (troop:GetModelCFrame().Position - pos).Magnitude
                 if dist < bestDist then
                     bestDist = dist
@@ -93,6 +113,12 @@ local function trackTroop(baseName, pos)
         State.Tracked[closest] = true
         State.OwnedByName[baseName] = State.OwnedByName[baseName] or {}
         table.insert(State.OwnedByName[baseName], closest)
+        
+        -- Map the instance back to the mapping system if we find a seed
+        local seed = closest:GetAttribute("UnitSeed")
+        if seed then
+            RegisterPlacement(HeroFolder:FindFirstChild(baseName), seed, closest.Name)
+        end
         return true
     end
     return false
@@ -157,8 +183,10 @@ getgenv().StartAutomation = function()
                     table.remove(State.EventQueue, 1)
                     local temp = HeroFolder:FindFirstChild(taskData.name)
                     if temp then
+                        -- TroopPlace remote usually returns the unitID, 
+                        -- ensure your Hook calls RegisterPlacement if you can catch the ID
                         TroopPlace:FireServer(temp, taskData.pos, 0)
-                        task.wait(0.5) -- Allow time for server to spawn the model
+                        task.wait(0.5) 
                         trackTroop(taskData.name, taskData.pos)
                     end
                 end
@@ -177,8 +205,6 @@ getgenv().StartAutomation = function()
                         task.wait(0.2)
                     end
                 else
-                    -- Fallback: If unit reference is lost, try to re-track by position
-                    -- This helps if the model was replaced/updated by the game during upgrade
                     table.remove(State.EventQueue, 1)
                 end
 
