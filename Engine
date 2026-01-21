@@ -262,10 +262,7 @@ getgenv().StartAutomation = function()
                     local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
                     if t and t.Parent == TroopFolder then
                         table.remove(State.EventQueue, 1)
-                        local unitID = t:GetAttribute("UnitSeed")
-                        if unitID then
-                            TroopEvent:FireServer("Upgrade", unitID)
-                        end
+                        TroopEvent:FireServer("Upgrade", t)
                         task.wait(0.1)
                     else
                         table.remove(State.EventQueue, 1)
@@ -288,10 +285,7 @@ getgenv().StartAutomation = function()
                     local nextLv = data.level + 1
                     local upCost = (UpgradePrices[taskData.name] and UpgradePrices[taskData.name][nextLv]) or 999999
                     if getMana() >= upCost then
-                        local unitID = data.model:GetAttribute("UnitSeed")
-                        if unitID then
-                            TroopEvent:FireServer("Upgrade", unitID)
-                        end
+                        TroopEvent:FireServer("Upgrade", data.model)
                         task.wait(0.05)
                     end
                 end
@@ -299,9 +293,7 @@ getgenv().StartAutomation = function()
             elseif taskData.type == "sell" then
                 local t = (State.OwnedByName[taskData.name] or {})[taskData.index]
                 if t then
-                    local unitID = t:GetAttribute("UnitSeed")
-                    if unitID then
-                        TroopEvent:FireServer("Sell", unitID)
+                    TroopEvent:FireServer("Sell", t)
                     end
                     table.remove(State.OwnedByName[taskData.name], taskData.index)
                     State.Tracked[t] = nil
