@@ -7,6 +7,7 @@ local TroopPlace = Events:WaitForChild("TroopPlace")
 local TroopEvent = Events:WaitForChild("TroopEvent")
 local SkipWaveRemote = Events:WaitForChild("SkipWave")
 local ModeVote = Events:WaitForChild("ModeVote")
+local UpdateTargeting = Events:WaitForChild("UpdateTargeting")
 
 local TroopFolder = workspace:WaitForChild("Troop")
 local HeroFolder = RS:WaitForChild("Troops")
@@ -61,13 +62,8 @@ local State = {
 local function getMana()
     local gui = PlayerGui:FindFirstChild("Amount", true)
     if not gui then return 0 end
-    
     local text = gui.Text:lower()
-    -- Support for infinite money mods
-    if text:find("inf") then
-        return math.huge
-    end
-    
+    if text:find("inf") then return math.huge end
     return tonumber(text:match("%d+")) or 0
 end
 
@@ -96,22 +92,12 @@ local function runAutoSkipUI(targetState)
     local info = menu and menu:FindFirstChild("Info")
     local autoSkipObj = info and info:FindFirstChild("AutoSkip")
     local skipBtn = PlayerGui:FindFirstChild("CheckBoxSKIP", true)
-
     if autoSkipObj and skipBtn and autoSkipObj.Value ~= targetState then
-        local fakeInput = {
-            UserInputType = Enum.UserInputType.MouseButton1,
-            UserInputState = Enum.UserInputState.Begin,
-            KeyCode = Enum.KeyCode.Unknown,
-            Position = Vector3.new(0,0,0)
-        }
+        local fakeInput = {UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin, KeyCode = Enum.KeyCode.Unknown, Position = Vector3.new(0,0,0)}
         local events = {"Activated", "MouseButton1Click"}
         for _, eventName in ipairs(events) do
             local signal = skipBtn[eventName]
-            if signal then
-                for _, connection in pairs(getconnections(signal)) do
-                    connection:Fire(fakeInput)
-                end
-            end
+            if signal then for _, connection in pairs(getconnections(signal)) do connection:Fire(fakeInput) end end
         end
     end
 end
@@ -120,31 +106,39 @@ end
 getgenv().QueuePlace = function(name, x, y, z)
     table.insert(State.EventQueue, {type = "place", name = name, pos = Vector3.new(x, y, z)})
 end
-
 getgenv().QueueUpgrade = function(name, index, level)
     table.insert(State.EventQueue, {type = "upgrade", name = name, index = index, level = level})
 end
-
 getgenv().QueueWaitMana = function(amt)
     table.insert(State.EventQueue, {type = "wait_mana", amount = amt})
 end
-
 getgenv().QueueSkip = function()
     table.insert(State.EventQueue, {type = "skip"})
 end
-
 getgenv().EnableAutoSkip = function()
     table.insert(State.EventQueue, {type = "toggle_autoskip", target = true})
 end
-
 getgenv().DisableAutoSkip = function()
     table.insert(State.EventQueue, {type = "toggle_autoskip", target = false})
 end
-
 getgenv().VoteMode = function(mode)
     table.insert(State.EventQueue, {type = "mode", mode = mode})
 end
-
+getgenv().QueueSell = function(name, index)
+    table.insert(State.EventQueue, {type = "sell", name = name, index = index})
+end
+getgenv().QueueBulkSell = function(name)
+    table.insert(State.EventQueue, {type = "bulk_sell", name = name})
+end
+getgenv().QueueAbility = function(name, index)
+    table.insert(State.EventQueue, {type = "ability", name = name, index = index})
+end
+getgenv().QueueTarget = function(name, index, targetMode)
+    table.insert(State.EventQueue, {type = "target", name = name, index = index, targetMode = targetMode})
+end
+getgenv().QueueBulk = function(name)
+    table.insert(State.EventQueue, {type = "bulk_upgrade", name = name})
+end
 getgenv().ClearQueue = function()
     State.EventQueue = {}
     State.OwnedByName = {}
@@ -154,16 +148,13 @@ end
 getgenv().StartAutomation = function()
     if State.Running then return end
     State.Running = true
-
     task.spawn(function()
         while #State.EventQueue > 0 do
             local taskData = State.EventQueue[1]
             local currentMana = getMana()
 
             if taskData.type == "wait_mana" then
-                if currentMana >= taskData.amount then
-                    table.remove(State.EventQueue, 1)
-                end
+                if currentMana >= taskData.amount then table.remove(State.EventQueue, 1) end
 
             elseif taskData.type == "toggle_autoskip" then
                 table.remove(State.EventQueue, 1)
@@ -205,10 +196,41 @@ getgenv().StartAutomation = function()
                         table.remove(State.EventQueue, 1)
                         TroopEvent:FireServer("Upgrade", model)
                         task.wait(0.15)
-                    else
-                        table.remove(State.EventQueue, 1)
+                    else table.remove(State.EventQueue, 1) end
+                end
+
+            elseif taskData.type == "bulk_upgrade" then
+                table.remove(State.EventQueue, 1)
+                local troops = State.OwnedByName[taskData.name] or {}
+                for _, model in ipairs(troops) do
+                    if model and model.Parent == TroopFolder then
+                        TroopEvent:FireServer("Upgrade", model)
+                        task.wait(0.05)
                     end
                 end
+
+            elseif taskData.type == "sell" then
+                table.remove(State.EventQueue, 1)
+                local model = (State.OwnedByName[taskData.name] or {})[taskData.index]
+                if model then 
+                    TroopEvent:FireServer("Sell", model)
+                    table.remove(State.OwnedByName[taskData.name], taskData.index)
+                end
+
+            elseif taskData.type == "bulk_sell" then
+                table.remove(State.EventQueue, 1)
+                TroopEvent:FireServer("BulkSell", nil, taskData.name)
+                State.OwnedByName[taskData.name] = {}
+
+            elseif taskData.type == "ability" then
+                table.remove(State.EventQueue, 1)
+                local model = (State.OwnedByName[taskData.name] or {})[taskData.index]
+                if model then TroopEvent:FireServer("Ability", model) end
+
+            elseif taskData.type == "target" then
+                table.remove(State.EventQueue, 1)
+                local model = (State.OwnedByName[taskData.name] or {})[taskData.index]
+                if model then UpdateTargeting:FireServer(model, taskData.targetMode) end
             end
             task.wait(0.1)
         end
