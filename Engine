@@ -60,7 +60,15 @@ local State = {
 -- Utility Functions
 local function getMana()
     local gui = PlayerGui:FindFirstChild("Amount", true)
-    return gui and tonumber(gui.Text:match("%d+")) or 0
+    if not gui then return 0 end
+    
+    local text = gui.Text:lower()
+    -- Support for infinite money mods
+    if text:find("inf") then
+        return math.huge
+    end
+    
+    return tonumber(text:match("%d+")) or 0
 end
 
 local function getSkipValue()
