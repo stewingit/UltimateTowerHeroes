@@ -5,12 +5,12 @@ end
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 getgenv().Rayfield = Rayfield
 
--- [[ SERVICES ]]
+-- Services
 local RS = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local event = RS:WaitForChild("Events"):WaitForChild("PrivateServerEvent")
-local equipEvent = RS:WaitForChild("Events"):WaitForChild("EquipTroop")
+local equipEvent = RS:WaitForChild("Events"):WaitForChild("EquipTroop") 
 local mapsFolder = RS:WaitForChild("Maps")
 local lp = Players.LocalPlayer
 
@@ -46,7 +46,11 @@ local function addAutomation(mapName, mode, difficulty, stratName, creator, requ
     }
 end
 
--- [[ DATABASES ]]
+-- [[ REGISTER AUTOMATIONS ]]
+addAutomation("CastleTown","Challenge Mode", "Easy","Chef Strat","Stew","Chef","https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/maps/CastleTown/Chef%20Strat")
+addAutomation("CastleTown","Casual Mode","Hard","Test Strat","Stew",{"Brawler", "Sniper", "Medic"},"https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/TestScript")
+
+-- MAP DATABASE
 local MapData = {
     ["CastleTown"] = {lvl = 0}, ["CorporateChaos"] = {lvl = 0}, ["GlowingGlacier"] = {lvl = 0}, ["SneakySwamp"] = {lvl = 0},
     ["CakeMap"] = {lvl = 0}, ["DoorsMap"] = {lvl = 0}, ["DoorsOutdoor"] = {lvl = 0}, ["KnoddyResort"] = {lvl = 0}, 
@@ -59,26 +63,45 @@ local MapData = {
     ["SacredShrine"] = {lvl = 25}, ["DrowsyDreamland"] = {lvl = 25}, ["FacilityRaid"] = {lvl = 25}, ["AbandonedAlleyway"] = {lvl = 25},
     ["SilentSanctuary"] = {lvl = 30}, ["DestinyDawn"] = {lvl = 30}, ["SunkenSanctum"] = {lvl = 30}, ["PiratePanic"] = {lvl = 30},
     ["AlienAttack"] = {lvl = 35}, ["HideawayHive"] = {lvl = 35}, ["Reflection"] = {lvl = 35},
-    ["TimelessTower"] = {lvl = 40}, ["KingdomChaos"] = {lvl = 40}, ["BlastechBarrage"] = {lvl = 40}, ["BleakBarrens"] = {lvl = 50}
+    ["TimelessTower"] = {lvl = 40}, ["KingdomChaos"] = {lvl = 40}, ["BlastechBarrage"] = {lvl = 40}, ["BleakBarrens"] = {lvl = 50},
+    ["Contract Map"] = {admin = true}, ["TestMap"] = {admin = true}, ["TestRaidMap"] = {admin = true}, ["HexMap"] = {admin = true},
+    ["EasterIsla"] = {lvl = 5, event = "Easter"}, ["EasterEggland"] = {lvl = 0, event = "Easter"}, ["GleamingGarden"] = {lvl = 0, event = "Easter"},
+    ["HalloweenHavoc"] = {lvl = 0, event = "Halloween"}, ["CreepyCarnival"] = {lvl = 0, event = "Halloween"}, ["MangledManor"] = {lvl = 0, event = "Halloween"}, 
+    ["GhoulingGraveyard"] = {lvl = 5, event = "Halloween"}, ["PumpkinParanoia"] = {lvl = 5, event = "Halloween"},
+    ["ToyTakeover"] = {lvl = 0, event = "Christmas"}, ["BustlingBakery"] = {lvl = 0, event = "Christmas"}, ["SweetSunrise"] = {lvl = 0, event = "Christmas"}, 
+    ["FrigidFortress"] = {lvl = 10, event = "Christmas"}, ["SnowySlopes"] = {lvl = 10, event = "Christmas"}, ["FestiveFreight"] = {lvl = 10, event = "Christmas"}
 }
 
+-- IMAGE DATABASE
 local VisualData = {
     ["BurrowBrawl"] = 17413809054, ["GlowingGlacier"] = 99276142386301, ["Grasslands"] = 71857396603077,
     ["AbandonedAlleyway"] = 9679707855, ["Aftermath"] = 10841543894, ["AlienAttack"] = 5340246927,
-    ["BlastechBarrage"] = 6385034166, ["BleakBarrens"] = 7156681716, ["CakeMap"] = 17823467330, 
-    ["CanyonCalamity"] = 7257103519, ["CloudyCatastrophe"] = 6005570172, ["CorporateChaos"] = 7002605654, 
-    ["DesolateDesert"] = 110081022155565, ["DestinyDawn"] = 15942646798, ["DisasterHotel"] = 16962841471, 
-    ["DoorsMap"] = 13175043396, ["DoorsOutdoor"] = 73331144524827, ["DrowsyDreamland"] = 102740713382156, 
-    ["FacilityFrenzy"] = 5340485802, ["FranticForest"] = 133138265678234, ["FruitMap"] = 139425753454172, 
-    ["GrandGarage"] = 5484171324, ["HideawayHive"] = 126141067416009, ["KingdomChaos"] = 5339965449, 
-    ["MineMap"] = 78563631254332, ["PiratePanic"] = 5339993547, ["RadiantReef"] = 7575288589, 
-    ["Reflection"] = 112921153324770, ["RooftopRumble"] = 5340058381, ["SacredShrine"] = 6982044477, 
-    ["SilentSanctuary"] = 5614324268, ["SneakySwamp"] = 10907268607, ["SunkenSanctum"] = 76205637900076, 
-    ["TidalTakedown"] = 14567404319, ["TimelessTower"] = 12956987027, ["VolcanoValley"] = 18668920274, 
-    ["ZombieMap"] = 9245434564, ["CastleTown"] = 135423624994431, ["KnoddyResort"] = 5340556771, ["IdolEncore"] = 8744282550
+    ["BlastechBarrage"] = 6385034166, ["BleakBarrens"] = 7156681716, ["BustlingBakery"] = 8064332847, 
+    ["CakeMap"] = 17823467330, ["CanyonCalamity"] = 7257103519, ["CloudyCatastrophe"] = 6005570172, 
+    ["CorporateChaos"] = 7002605654, ["CreepyCarnival"] = 15136629620, ["DesolateDesert"] = 110081022155565, 
+    ["DestinyDawn"] = 15942646798, ["DisasterHotel"] = 16962841471, ["DoorsMap"] = 13175043396, 
+    ["DoorsOutdoor"] = 73331144524827, ["DrowsyDreamland"] = 102740713382156, ["FacilityFrenzy"] = 5340485802, 
+    ["FacilityRaid"] = 5340485802, ["FestiveFreight"] = 86227024236777, ["FranticForest"] = 133138265678234, 
+    ["FrigidFortress"] = 15706263063, ["FruitMap"] = 139425753454172, ["GhoulingGraveyard"] = 7575467874, 
+    ["GleamingGarden"] = 9343162968, ["GrandGarage"] = 5484171324, ["HalloweenHavoc"] = 5813531191, 
+    ["HideawayHive"] = 126141067416009, ["KingdomChaos"] = 5339965449, ["MangledManor"] = 77259277759258, 
+    ["MetaverseMadness"] = 6685610181, ["MineMap"] = 78563631254332, ["Oddport Academy"] = 6887183476, 
+    ["PiratePanic"] = 5339993547, ["PumpkinParanoia"] = 15180248072, ["RadiantReef"] = 7575288589, 
+    ["Reflection"] = 112921153324770, ["RolidayRumble"] = 15800606155, ["RooftopRumble"] = 5340058381, 
+    ["SacredShrine"] = 6982044477, ["SilentSanctuary"] = 5614324268, ["SneakySwamp"] = 10907268607, 
+    ["SnowySlopes"] = 79808604284772, ["SunkenSanctum"] = 76205637900076, ["SweetSunrise"] = 11687130031, 
+    ["TidalTakedown"] = 14567404319, ["TimelessTower"] = 12956987027, ["ToyTakeover"] = 6106775674, 
+    ["VolcanoValley"] = 18668920274, ["ZombieMap"] = 9245434564, ["CastleTown"] = 135423624994431, 
+    ["KnoddyResort"] = 5340556771, ["IdolEncore"] = 8744282550
 }
 
--- [[ UTILITY FUNCTIONS ]]
+-- Utility Functions
+local function GetRandomMapIcon()
+    local keys = {}
+    for k, _ in pairs(VisualData) do table.insert(keys, k) end
+    return VisualData[keys[math.random(1, #keys)]]
+end
+
 local function GetDataFolder()
     return Workspace:WaitForChild("GameStuff"):WaitForChild("Data"):FindFirstChild(lp.Name)
 end
@@ -109,11 +132,11 @@ local function GetFilteredMaps()
     for _, mapObj in ipairs(mapsFolder:GetChildren()) do
         local mapName = mapObj.Name
         local data = MapData[mapName]
-        if data then
+        if data and not data.admin then
             local levelPass = myLvl >= (data.lvl or 0)
             local eventPass = (not data.event) or (currentEvent == data.event)
             if levelPass and eventPass then table.insert(list, mapName) end
-        else
+        elseif not data then
             table.insert(list, mapName)
         end
     end
@@ -121,7 +144,6 @@ local function GetFilteredMaps()
     return list
 end
 
--- [[ UI INITIALIZATION ]]
 local Window = Rayfield:CreateWindow({
    Name = "Ultimate Tower Heroes",
    Icon = "castle",
@@ -135,7 +157,7 @@ local StatsTab = Window:CreateTab("Stats", "bar-chart-2")
 
 local SelectionLabel, StratDropdown, StratPanel
 
--- [[ UI LOGIC ]]
+-- REFRESH STRATS LOGIC
 local function RefreshStrategyList()
     if not Rayfield.Flags.SelectedMap or not Rayfield.Flags.SelectedMode or not Rayfield.Flags.SelectedDifficulty then return end
     local map = Rayfield.Flags.SelectedMap.CurrentOption[1]
@@ -155,17 +177,17 @@ local function UpdateStatusLabel()
     local map = Rayfield.Flags.SelectedMap.CurrentOption[1]
     local mode = Rayfield.Flags.SelectedMode.CurrentOption[1]
     local diff = Rayfield.Flags.SelectedDifficulty.CurrentOption[1]
-    SelectionLabel:Set(string.format("%s | %s | %s", map, mode, diff), VisualData[map] or 0)
+    local icon = (map == "1Random") and GetRandomMapIcon() or (VisualData[map] or 0)
+    if SelectionLabel then SelectionLabel:Set(string.format("%s | %s | %s", map, mode, diff), icon) end
     RefreshStrategyList()
 end
 
--- [[ MAIN TAB ]]
+-- UI ELEMENTS
 SelectionLabel = MainTab:CreateLabel("Selected: Loading...", 0)
 
 MainTab:CreateDropdown({
    Name = "Map",
    Options = GetFilteredMaps(),
-   CurrentOption = {"CastleTown"},
    Flag = "SelectedMap",
    Callback = function() UpdateStatusLabel() end,
 })
@@ -181,7 +203,6 @@ MainTab:CreateDropdown({
 MainTab:CreateDropdown({
    Name = "Difficulty",
    Options = {"Easy", "Medium", "Hard"},
-   CurrentOption = {"Easy"},
    Flag = "SelectedDifficulty",
    Callback = function() UpdateStatusLabel() end,
 })
@@ -210,6 +231,7 @@ StratPanel = MainTab:CreateParagraph({Title = "Automation Status", Content = "Pi
 
 MainTab:CreateDivider()
 
+-- [[ UPDATED START MATCH BUTTON ]]
 MainTab:CreateButton({
    Name = "Start Match",
    Callback = function()
@@ -221,40 +243,41 @@ MainTab:CreateButton({
       local diffValue = (diffName == "Easy" and 2) or (diffName == "Medium" and 3) or 4
       local targetMap = mapsFolder:FindFirstChild(mapName)
       
-      if not targetMap then return end
+      if targetMap then
+          if stratName ~= "Manual Play" then
+              local data = StrategyData[mapName][mode][diffName][stratName]
+              local inventory = GetOwnedTroops()
+              local level = GetPlayerLevel()
 
-      if stratName ~= "Manual Play" then
-          local data = StrategyData[mapName][mode][diffName][stratName]
-          local inventory = GetOwnedTroops()
-          local level = GetPlayerLevel()
-          
-          if #data.Requirements >= 5 and level < 20 then
-              return Rayfield:Notify({Title = "Slot Requirement", Content = "Level 20 needed for 5 heroes!", Duration = 5, Image = "lock"})
-          end
+              if #data.Requirements >= 5 and level < 20 then
+                  return Rayfield:Notify({Title = "Slot Error", Content = "Level 20 required for 5 heroes!", Duration = 5})
+              end
+              for _, hero in ipairs(data.Requirements) do
+                  if not inventory[hero] then
+                      return Rayfield:Notify({Title = "Missing Hero", Content = "You don't own: " .. hero, Duration = 5})
+                  end
+              end
 
-          for _, hero in ipairs(data.Requirements) do
-              if not inventory[hero] then
-                  return Rayfield:Notify({Title = "Missing Hero", Content = "You don't own: " .. hero, Duration = 5, Image = "alert-circle"})
+              for i, hero in ipairs(data.Requirements) do
+                  equipEvent:InvokeServer(hero, i)
+                  task.wait(0.1)
+              end
+
+              if data and data.QueueScript and qot then
+                  qot(data.QueueScript)
               end
           end
-
-          -- Equip logic
-          for i, hero in ipairs(data.Requirements) do
-              equipEvent:InvokeServer(hero, i)
-              task.wait(0.1)
-          end
-          if data.QueueScript and qot then qot(data.QueueScript) end
+          
+          event:FireServer("Create", true) task.wait(0.2)
+          event:FireServer("Mode", mode) task.wait(0.2)
+          event:FireServer("Update", { Map = targetMap }) task.wait(0.2)
+          event:FireServer("Difficulty", diffValue) task.wait(0.2)
+          event:FireServer("Start")
       end
-      
-      event:FireServer("Create", true) task.wait(0.2)
-      event:FireServer("Mode", mode) task.wait(0.2)
-      event:FireServer("Update", { Map = targetMap }) task.wait(0.2)
-      event:FireServer("Difficulty", diffValue) task.wait(0.2)
-      event:FireServer("Start")
    end,
 })
 
--- [[ STATS TAB ]]
+-- [[ STATS TAB ELEMENTS ]]
 local GeneralLabel = StatsTab:CreateLabel("General: Loading...")
 local QuestLabel = StatsTab:CreateParagraph({Title = "Active Quests", Content = "None"})
 local LoadoutLabel = StatsTab:CreateParagraph({Title = "Equipped Loadout", Content = "None"})
@@ -270,7 +293,6 @@ local function UpdateStats()
         GeneralLabel:Set(string.format("Level: %s | Money: %s | Event: %s", 
             tostring(lvl and lvl.Value or 0), tostring(mon and mon.Value or 0), tostring(ev and ev.Value or "None")))
 
-        -- Quest Processing
         local questText = ""
         local quests = dataPath:FindFirstChild("MyQuests")
         if quests then
@@ -281,7 +303,6 @@ local function UpdateStats()
         end
         QuestLabel:Set({Title = "Active Quests", Content = questText ~= "" and questText or "No active quests."})
 
-        -- Loadout Processing
         local loadoutText = ""
         local myHero = Workspace:FindFirstChild("MyHero")
         if myHero then
@@ -290,25 +311,26 @@ local function UpdateStats()
                 local hName = "Empty"
                 if slot and #slot:GetChildren() > 0 then
                     for _, c in pairs(slot:GetChildren()) do if c.Name ~= "Skin" then hName = c.Name end end
+                    loadoutText = loadoutText .. string.format("Slot %d: %s\n", i, hName)
                 end
-                loadoutText = loadoutText .. string.format("Slot %d: %s\n", i, hName)
             end
         end
         LoadoutLabel:Set({Title = "Equipped Loadout", Content = loadoutText})
 
-        -- Inventory Processing
-        local inv = {}
-        for troopName, _ in pairs(GetOwnedTroops()) do table.insert(inv, troopName) end
-        InventoryLabel:Set({Title = "Inventory", Content = "Troops: " .. table.concat(inv, ", ")})
+        local invText = "Troops: "
+        local tFolder = dataPath:FindFirstChild("Troops")
+        if tFolder then
+            local t = {} for _, v in pairs(tFolder:GetChildren()) do table.insert(t, v.Name) end
+            invText = invText .. table.concat(t, ", ")
+        end
+        InventoryLabel:Set({Title = "Inventory", Content = invText})
     end
 end
 
-StatsTab:CreateButton({Name = "Refresh Stats", Callback = UpdateStats})
+StatsTab:CreateButton({
+   Name = "Refresh Stats",
+   Callback = function() UpdateStats() end,
+})
 
--- [[ REGISTER AUTOMATIONS ]]
-addAutomation("CastleTown","Challenge Mode", "Easy","Chef Strat","Stew",{"Chef", "Scientist"},"https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/maps/CastleTown/Chef%20Strat")
-addAutomation("CastleTown","Casual Mode","Hard","Test Strat","Stew",{"Brawler", "Sniper", "Medic"},"https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/TestScript")
-
--- [[ INITIALIZE ]]
 UpdateStats()
 UpdateStatusLabel()
