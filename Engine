@@ -83,6 +83,31 @@ local function findTroopAtPos(pos)
     return closest
 end
 
+local function runAutoSkipUI(targetState)
+    local menu = PlayerGui:FindFirstChild("Menu")
+    local info = menu and menu:FindFirstChild("Info")
+    local autoSkipObj = info and info:FindFirstChild("AutoSkip")
+    local skipBtn = PlayerGui:FindFirstChild("CheckBoxSKIP", true)
+
+    if autoSkipObj and skipBtn and autoSkipObj.Value ~= targetState then
+        local fakeInput = {
+            UserInputType = Enum.UserInputType.MouseButton1,
+            UserInputState = Enum.UserInputState.Begin,
+            KeyCode = Enum.KeyCode.Unknown,
+            Position = Vector3.new(0,0,0)
+        }
+        local events = {"Activated", "MouseButton1Click"}
+        for _, eventName in ipairs(events) do
+            local signal = skipBtn[eventName]
+            if signal then
+                for _, connection in pairs(getconnections(signal)) do
+                    connection:Fire(fakeInput)
+                end
+            end
+        end
+    end
+end
+
 -- Global API
 getgenv().QueuePlace = function(name, x, y, z)
     table.insert(State.EventQueue, {type = "place", name = name, pos = Vector3.new(x, y, z)})
@@ -98,6 +123,14 @@ end
 
 getgenv().QueueSkip = function()
     table.insert(State.EventQueue, {type = "skip"})
+end
+
+getgenv().EnableAutoSkip = function()
+    table.insert(State.EventQueue, {type = "toggle_autoskip", target = true})
+end
+
+getgenv().DisableAutoSkip = function()
+    table.insert(State.EventQueue, {type = "toggle_autoskip", target = false})
 end
 
 getgenv().VoteMode = function(mode)
@@ -124,6 +157,10 @@ getgenv().StartAutomation = function()
                     table.remove(State.EventQueue, 1)
                 end
 
+            elseif taskData.type == "toggle_autoskip" then
+                table.remove(State.EventQueue, 1)
+                runAutoSkipUI(taskData.target)
+
             elseif taskData.type == "mode" then
                 table.remove(State.EventQueue, 1)
                 ModeVote:FireServer(taskData.mode)
@@ -142,8 +179,6 @@ getgenv().StartAutomation = function()
                     local heroAsset = HeroFolder:FindFirstChild(taskData.name)
                     if heroAsset then
                         TroopPlace:FireServer(heroAsset, taskData.pos, 0)
-                        
-                        -- Skin-proof distance identification
                         task.wait(0.35)
                         local actualModel = findTroopAtPos(taskData.pos)
                         if actualModel then
@@ -163,7 +198,6 @@ getgenv().StartAutomation = function()
                         TroopEvent:FireServer("Upgrade", model)
                         task.wait(0.15)
                     else
-                        -- Unit likely sold or missing, remove task
                         table.remove(State.EventQueue, 1)
                     end
                 end
