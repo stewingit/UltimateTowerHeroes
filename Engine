@@ -87,18 +87,32 @@ local function findTroopAtPos(pos)
     return closest
 end
 
+-- Fixed Auto Skip UI simulation
 local function runAutoSkipUI(targetState)
     local menu = PlayerGui:FindFirstChild("Menu")
     local info = menu and menu:FindFirstChild("Info")
     local autoSkipObj = info and info:FindFirstChild("AutoSkip")
     local skipBtn = PlayerGui:FindFirstChild("CheckBoxSKIP", true)
-    if autoSkipObj and skipBtn and autoSkipObj.Value ~= targetState then
-        local fakeInput = {UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin, KeyCode = Enum.KeyCode.Unknown, Position = Vector3.new(0,0,0)}
-        local events = {"Activated", "MouseButton1Click"}
-        for _, eventName in ipairs(events) do
-            local signal = skipBtn[eventName]
-            if signal then for _, connection in pairs(getconnections(signal)) do connection:Fire(fakeInput) end end
+    
+    if autoSkipObj and autoSkipObj.Value ~= targetState then
+        if skipBtn then
+            if firesignal then
+                pcall(function() firesignal(skipBtn.MouseButton1Click) end)
+            elseif getconnections then
+                for _, connection in pairs(getconnections(skipBtn.MouseButton1Click)) do
+                    -- Call the bound function directly to bypass Roblox input validation errors
+                    pcall(function() connection.Function() end) 
+                    pcall(function() connection:Fire() end)
+                end
+            end
         end
+        
+        -- Failsafe: Force the value manually if the executor's UI interaction failed
+        task.delay(0.2, function()
+            if autoSkipObj.Value ~= targetState then
+                autoSkipObj.Value = targetState
+            end
+        end)
     end
 end
 
