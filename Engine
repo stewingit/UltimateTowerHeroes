@@ -87,32 +87,52 @@ local function findTroopAtPos(pos)
     return closest
 end
 
--- Fixed Auto Skip UI simulation
+-- INTEGRATED AUTO SKIP LOGIC
 local function runAutoSkipUI(targetState)
+    -- Safe path definitions to prevent yielding errors in the main loop
     local menu = PlayerGui:FindFirstChild("Menu")
-    local info = menu and menu:FindFirstChild("Info")
-    local autoSkipObj = info and info:FindFirstChild("AutoSkip")
-    local skipBtn = PlayerGui:FindFirstChild("CheckBoxSKIP", true)
+    local autoSkipValue = menu and menu:FindFirstChild("Info") and menu.Info:FindFirstChild("AutoSkip")
     
-    if autoSkipObj and autoSkipObj.Value ~= targetState then
-        if skipBtn then
-            if firesignal then
-                pcall(function() firesignal(skipBtn.MouseButton1Click) end)
-            elseif getconnections then
-                for _, connection in pairs(getconnections(skipBtn.MouseButton1Click)) do
-                    -- Call the bound function directly to bypass Roblox input validation errors
-                    pcall(function() connection.Function() end) 
-                    pcall(function() connection:Fire() end)
-                end
+    local interfaceTab = menu and menu:FindFirstChild("Setting") and menu.Setting:FindFirstChild("Tabs") and menu.Setting.Tabs:FindFirstChild("Interface")
+    local skipFrame = menu and menu:FindFirstChild("Skip")
+
+    local paths = {
+        interfaceTab and interfaceTab:FindFirstChild("CheckBoxSKIP"),
+        skipFrame and skipFrame:FindFirstChild("Auto")
+    }
+
+    for _, btn in ipairs(paths) do
+        if btn then
+            -- If it's an ObjectValue, get the real button
+            local realBtn = btn:IsA("ObjectValue") and btn.Value or btn
+            
+            if realBtn then
+                -- Force the visual checkmark first
+                pcall(function()
+                    local check = realBtn:FindFirstChildWhichIsA("ImageLabel", true)
+                    if check then check.Visible = targetState end
+                end)
+
+                -- Fire the click with dummy input to prevent 'KeyCode' module errors
+                pcall(function()
+                    if firesignal then
+                        firesignal(realBtn.MouseButton1Click, {UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin})
+                        firesignal(realBtn.Activated, {UserInputType = Enum.UserInputType.MouseButton1, UserInputState = Enum.UserInputState.Begin})
+                    elseif getconnections then
+                        for _, con in pairs(getconnections(realBtn.MouseButton1Click)) do con:Fire() end
+                    end
+                end)
             end
         end
-        
-        -- Failsafe: Force the value manually if the executor's UI interaction failed
-        task.delay(0.2, function()
-            if autoSkipObj.Value ~= targetState then
-                autoSkipObj.Value = targetState
-            end
-        end)
+    end
+
+    -- DATA SYNC
+    if autoSkipValue then
+        autoSkipValue.Value = targetState
+    end
+    
+    if targetState == true then
+        SkipWaveRemote:FireServer()
     end
 end
 
