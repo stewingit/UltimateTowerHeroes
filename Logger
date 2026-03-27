@@ -19,6 +19,7 @@ local ConfirmDelete = false
 local FolderName = "UTH Logged Strats"
 local CurrentLoadedContent = ""
 local IsCreateMode = false
+local IsAutoQueue = false -- Flag for Auto Queue logic
 
 local ENGINE_LINK = "https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/Engine"
 
@@ -137,10 +138,10 @@ local function parseScript(content, isLocked)
     end
     if isLocked then
         loadScroll.Size = UDim2.new(1, -20, 1, -115); loadScroll.Position = UDim2.new(0, 10, 0, 50)
-        startMenu.Visible = false; backBtn.Visible = false; executeBtn.Visible = false; saveOnlyBtn.Visible = false; clearBtn.Visible = false; title.Text = "STRAT ACTIVE"
+        startMenu.Visible = false; backBtn.Visible = false; executeBtn.Visible = false; saveOnlyBtn.Visible = false; clearBtn.Visible = false; title.Text = "AUTO STRAT ACTIVE"
     else
         loadScroll.Size = UDim2.new(1, -20, 1, -165); loadScroll.Position = UDim2.new(0, 10, 0, 50)
-        loadScroll.Visible = true; startMenu.Visible = false; backBtn.Visible = true; executeBtn.Visible = true; title.Text = "LOADED STRAT"
+        startMenu.Visible = false; backBtn.Visible = true; executeBtn.Visible = true; title.Text = "LOADED STRAT"
     end
     loadScroll.Visible = true
 end
@@ -166,6 +167,16 @@ executeBtn.MouseButton1Click:Connect(function()
     end 
 end)
 
+-- Queue Utility Auto-Loader Setup
+_G.LoadExternalStrat = function(content)
+    IsAutoQueue = true
+    parseScript(content, true)
+    
+    local scriptToRun = 'loadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n' .. content .. '\nStartAutomation()'
+    local f = loadstring(scriptToRun)
+    if f then task.spawn(f) end 
+end
+
 saveOnlyBtn.MouseButton1Click:Connect(function()
     local over = Instance.new("Frame", main); over.Size = UDim2.new(1,0,1,0); over.BackgroundColor3 = Color3.new(0,0,0); over.BackgroundTransparency = 0.5; over.ZIndex = 100; Instance.new("UICorner", over)
     local pop = Instance.new("Frame", over); pop.Size = UDim2.new(0,220,0,120); pop.Position = UDim2.new(0.5,-110,0.5,-60); pop.BackgroundColor3 = Color3.fromRGB(40,40,40); Instance.new("UICorner", pop)
@@ -186,7 +197,7 @@ autoSkipObj.Changed:Connect(function(val)
         LastLoggedAutoSkip = val
         local cmd = val and "EnableAutoSkip()" or "DisableAutoSkip()"
         autoTickLog(cmd)
-        if not title.Text:find("ACTIVE") then addLog("AutoSkip: "..(val and "Enabled" or "Disabled"), cmd, Color3.fromRGB(0, 100, 150), createScroll, false) end
+        if not IsAutoQueue then addLog("AutoSkip: "..(val and "Enabled" or "Disabled"), cmd, Color3.fromRGB(0, 100, 150), createScroll, false) end
     end
 end)
 
@@ -213,7 +224,9 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 UnitIDToHero[unitID] = cleanName
                 TroopCounts[cleanName] = (TroopCounts[cleanName] or 0) + 1; local idx = TroopCounts[cleanName]
                 
-                if not title.Text:find("ACTIVE") then addLog("Place "..cleanName, string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', cleanName, pos.X, pos.Y, pos.Z), Color3.fromRGB(40, 100, 40), createScroll, false) end
+                local exactCmd = string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', cleanName, pos.X, pos.Y, pos.Z)
+                autoTickLog('QueuePlace("'..cleanName..'"') -- Using substring search to guarantee match regardless of float precision
+                if not IsAutoQueue then addLog("Place "..cleanName, exactCmd, Color3.fromRGB(40, 100, 40), createScroll, false) end
                 
                 task.delay(0.5, function()
                     for _, v in ipairs(TroopFolder:GetChildren()) do
@@ -226,8 +239,10 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
             -- Logic: Targeting Updates
             elseif remoteName == "UpdateTargeting" then
                 local unit = args[1]; local d = TroopMapping[unit]
-                if d and not title.Text:find("ACTIVE") then
-                    addLog(d.name.." Target: "..args[2], string.format('QueueTarget("%s", %d, "%s")', d.name, d.index, args[2]), Color3.fromRGB(100, 150, 50), createScroll, false)
+                if d then
+                    local exactCmd = string.format('QueueTarget("%s", %d, "%s")', d.name, d.index, args[2])
+                    autoTickLog(exactCmd)
+                    if not IsAutoQueue then addLog(d.name.." Target: "..args[2], exactCmd, Color3.fromRGB(100, 150, 50), createScroll, false) end
                 end
 
             -- Logic: Troop Events (Upgrade, Ability, Sell, Bulk)
@@ -244,25 +259,38 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                     if act == "Upgrade" then
                         d.level = d.level + 1; local cmd = string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level)
                         autoTickLog(cmd)
-                        if not title.Text:find("ACTIVE") then addLog(string.format("Upgrade %s %d", d.name, d.index), cmd, Color3.fromRGB(40, 60, 100), createScroll, false) end
+                        if not IsAutoQueue then addLog(string.format("Upgrade %s %d", d.name, d.index), cmd, Color3.fromRGB(40, 60, 100), createScroll, false) end
                     
                     elseif act == "Ability" then
                         GlobalAbilityCounts[d.name] = (GlobalAbilityCounts[d.name] or 0) + 1
                         local cost = getAbilityCost(d.name, d.abilityCount, GlobalAbilityCounts[d.name])
                         d.abilityCount = d.abilityCount + 1
-                        if not title.Text:find("ACTIVE") then
-                            addLog("Wait Mana: "..cost, string.format('QueueWaitMana(%d)', cost), Color3.fromRGB(100, 100, 40), createScroll, false)
-                            addLog(d.name.." Ability", string.format('QueueAbility("%s", %d)', d.name, d.index), Color3.fromRGB(200, 100, 0), createScroll, false)
+                        
+                        local manaCmd = string.format('QueueWaitMana(%d)', cost)
+                        local abCmd = string.format('QueueAbility("%s", %d)', d.name, d.index)
+                        
+                        autoTickLog(manaCmd)
+                        autoTickLog(abCmd)
+                        
+                        if not IsAutoQueue then
+                            addLog("Wait Mana: "..cost, manaCmd, Color3.fromRGB(100, 100, 40), createScroll, false)
+                            addLog(d.name.." Ability", abCmd, Color3.fromRGB(200, 100, 0), createScroll, false)
                         end
 
                     elseif act == "Sell" then
-                        if not title.Text:find("ACTIVE") then addLog("Sell "..d.name, string.format('QueueSell("%s", %d)', d.name, d.index), Color3.fromRGB(150, 50, 50), createScroll, false) end
+                        local cmd = string.format('QueueSell("%s", %d)', d.name, d.index)
+                        autoTickLog(cmd)
+                        if not IsAutoQueue then addLog("Sell "..d.name, cmd, Color3.fromRGB(150, 50, 50), createScroll, false) end
+                        
                         if typeof(unitIdentifier) == "Instance" then TroopMapping[unitIdentifier] = nil 
                         else for k, v in pairs(TroopMapping) do if v.id == unitIdentifier then TroopMapping[k] = nil break end end end
                     
                     elseif act == "BulkSell" then
                         local heroType = args[3]
-                        if not title.Text:find("ACTIVE") then addLog("Bulk Sell "..heroType, string.format('QueueBulkSell("%s")', heroType), Color3.fromRGB(150, 0, 0), createScroll, false) end
+                        local cmd = string.format('QueueBulkSell("%s")', heroType)
+                        autoTickLog(cmd)
+                        if not IsAutoQueue then addLog("Bulk Sell "..heroType, cmd, Color3.fromRGB(150, 0, 0), createScroll, false) end
+                        
                         for unit, data in pairs(TroopMapping) do if data.name == heroType then TroopMapping[unit] = nil end end
 
                     elseif act == "BulkUp" then
@@ -270,16 +298,26 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                         for _, data in pairs(TroopMapping) do if data.name == bn then 
                             local nl = data.level + 1; if UpgradePrices[bn] and UpgradePrices[bn][nl] then cost = cost + UpgradePrices[bn][nl] end; data.level = nl 
                         end end
-                        if not title.Text:find("ACTIVE") then 
+                        
+                        local cmd = string.format('QueueBulk("%s")', bn)
+                        if cost > 0 then autoTickLog(string.format('QueueWaitMana(%d)', cost)) end
+                        autoTickLog(cmd)
+                        
+                        if not IsAutoQueue then 
                             if cost > 0 then addLog("Wait Mana: "..cost, string.format('QueueWaitMana(%d)', cost), Color3.fromRGB(100, 100, 40), createScroll, false) end
-                            addLog("Bulk "..bn, string.format('QueueBulk("%s")', bn), Color3.fromRGB(80, 40, 120), createScroll, false) 
+                            addLog("Bulk "..bn, cmd, Color3.fromRGB(80, 40, 120), createScroll, false) 
                         end
                     end
                 end
             elseif remoteName == "SkipWave" then
-                if autoSkipObj.Value == false and not title.Text:find("ACTIVE") then addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0), createScroll, false) end
+                if autoSkipObj.Value == false then 
+                    autoTickLog("QueueSkip()")
+                    if not IsAutoQueue then addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0), createScroll, false) end 
+                end
             elseif remoteName == "ModeVote" then
-                if not title.Text:find("ACTIVE") then addLog("Vote: "..tostring(args[1]), string.format('VoteMode("%s")', tostring(args[1])), Color3.fromRGB(0, 150, 150), createScroll, false) end
+                local cmd = string.format('VoteMode("%s")', tostring(args[1]))
+                autoTickLog(cmd)
+                if not IsAutoQueue then addLog("Vote: "..tostring(args[1]), cmd, Color3.fromRGB(0, 150, 150), createScroll, false) end
             end
         end)
     end
