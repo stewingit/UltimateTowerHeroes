@@ -1,6 +1,10 @@
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
+local pGui = player:WaitForChild("PlayerGui")
+local autoSkipObj = pGui:WaitForChild("Menu"):WaitForChild("Info"):WaitForChild("AutoSkip")
 local TroopFolder = workspace:WaitForChild("Troop")
 
 -- Dynamic pathing for V80 logic
@@ -12,20 +16,59 @@ local SessionLogs = {}
 local TroopCounts = {}
 local TroopMapping = {} 
 local GlobalAbilityCounts = {} 
-local UnitIDToHero = {} -- V80 Hero Name resolution
+local UnitIDToHero = {} 
 local LoadedLogsRef = {} 
 local LastLoggedAutoSkip = nil 
-local ConfirmDelete = false
 local FolderName = "UTH Logged Strats"
 local CurrentLoadedContent = ""
-local IsCreateMode = false
-local IsAutoQueue = false -- Flag for Auto Queue logic
+local IsCreateMode = true
+local IsAutoQueue = false 
+local IsRecording = false
+local IsResetting = false 
 
 local ENGINE_LINK = "https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/Engine"
 
-if makefolder then makefolder(FolderName) end
+if makefolder then pcall(function() makefolder(FolderName) end) end
 
--- Logic: Helper for Ability Costs
+---------------------------------------------------------
+-- STATS TAB HELPER LOGIC (GET INFO)
+---------------------------------------------------------
+local function toStr(val)
+	return (typeof(val) == "Instance" and (val:IsA("ValueBase") and tostring(val.Value) or val.Name)) or tostring(val)
+end
+
+local function getFinalCost(raw, unitStats, isAbility)
+	local base = typeof(raw) == "function" and (select(2, pcall(raw)) or 0) or tonumber(raw) or 0
+	if base == 0 then return nil end
+
+	local mult = 1
+	if not isAbility then
+		local bf = unitStats:FindFirstChild("BonusFolder")
+		if bf then
+			for _, buff in ipairs(bf:GetChildren()) do
+				local c = buff:FindFirstChild("Cost")
+				if c and c:IsA("ValueBase") then mult = mult * (tonumber(c.Value) or 1) end
+			end
+		end
+	end
+	return tostring(math.floor(base * mult))
+end
+
+local function findUnitData(name)
+	local paths = {RS:FindFirstChild("Troops"), RS:FindFirstChild("Units"), RS}
+	for _, p in ipairs(paths) do
+		if not p then continue end
+		local obj = (p.Name == name and p) or p:FindFirstChild(name, true)
+		if obj and obj:IsA("ModuleScript") then
+			local s, data = pcall(require, obj)
+			if s and (data.Stages or data.Levels or data.Upgrades) then return data end
+		end
+	end
+end
+
+---------------------------------------------------------
+-- PRICE LOGIC
+---------------------------------------------------------
 local function getAbilityCost(heroName, individualCount, globalCount)
     if heroName == "Volt" then
         local costs = {3000, 7000, 11000, 15000, 19000}
@@ -59,158 +102,393 @@ end
 local UpgradePrices = {
     ["Chef"] = {[1] = 110, [2] = 1000, [3] = 2200, [4] = 3700, [5] = 6000},
     ["Wizard"] = {[1] = 100, [2] = 430, [3] = 1500, [4] = 2400, [5] = 4500},
-    ["Hotdog Frank"] = {[1] = 135, [2] = 900, [3] = 1800, [4] = 3000, [5] = 5200},
     ["Volt"] = {[1] = 170, [2] = 1200, [3] = 2800, [4] = 5000, [5] = 6800},
     ["Yasuke"] = {[1] = 260, [2] = 1100, [3] = 1800, [4] = 3500, [5] = 6700},
-    ["Mako"] = {[1] = 110, [2] = 1000, [3] = 2500, [4] = 3500, [5] = 6000},
-    ["Scientist"] = {[1] = 250, [2] = 1200, [3] = 2500, [4] = 4500, [5] = 8000},
-    ["Fracture"] = {[1] = 130, [2] = 900, [3] = 2100, [4] = 3700, [5] = 6800},
-    ["Bunny"] = {[1] = 110, [2] = 650, [3] = 2400, [4] = 2700, [5] = 3500},
-    ["Beebo"] = {[1] = 120, [2] = 900, [3] = 2300, [4] = 3200, [5] = 5500},
-    ["Voca"] = {[1] = 120, [2] = 1000, [3] = 3200, [4] = 5200, [5] = 6700},
-    ["Branch"] = {[1] = 150, [2] = 800, [3] = 2900, [4] = 4200, [5] = 6200},
-    ["Wafer"] = {[1] = 120, [2] = 1300, [3] = 2700, [4] = 4000, [5] = 6000},
-    ["Keith"] = {[1] = 280, [2] = 1300, [3] = 2000, [4] = 2800, [5] = 3500},
-    ["Sparks Kilowatt"] = {[1] = 150, [2] = 800, [3] = 2500, [4] = 4000, [5] = 5500},
-    ["Soda Pop"] = {[1] = 140, [2] = 950, [3] = 2600, [4] = 4600, [5] = 5500},
-    ["Quinn"] = {[1] = 150, [2] = 1350, [3] = 3600, [4] = 5600, [5] = 7000},
     ["Lure"] = {[1] = 160, [2] = 950, [3] = 2500, [4] = 4250, [5] = 6000},
-    ["Slime King"] = {[1] = 700, [2] = 1500, [3] = 2500, [4] = 3800, [5] = 6000},
-    ["Kart Kid"] = {[1] = 650, [2] = 1400, [3] = 2500, [4] = 4000, [5] = 6500},
-    ["Jester"] = {[1] = 800, [2] = 3500, [3] = 5500, [4] = 7500, [5] = 10000},
-    ["Hayes"] = {[1] = 650, [2] = 2500, [3] = 5000, [4] = 7000, [5] = 10000},
-    ["Buzzer"] = {[1] = 430, [2] = 2100, [3] = 4200, [4] = 6200, [5] = 8000},
-    ["Oddport"] = {[1] = 720, [2] = 1500, [3] = 2700, [4] = 4200, [5] = 6800},
-    ["Stella"] = {[1] = 600, [2] = 2000, [3] = 3200, [4] = 4400, [5] = 6800},
-    ["El Goblino"] = {[1] = 350, [2] = 1800, [3] = 3000, [4] = 5200, [5] = 6700},
-    ["Nuki Launcher"] = {[1] = 580, [2] = 3500, [3] = 6000, [4] = 8500, [5] = 10000},
-    ["Byte"] = {[1] = 500, [2] = 2500, [3] = 3400, [4] = 4700, [5] = 7000},
-    ["Dumpster Child"] = {[1] = 600, [2] = 1100, [3] = 2500, [4] = 3800, [5] = 6000},
-    ["Lemonade Cat"] = {[1] = 200, [2] = 900, [3] = 1700, [4] = 2800, [5] = 4200},
-    ["Maitake"] = {[1] = 350, [2] = 1500, [3] = 2200, [4] = 5600, [5] = 6800},
-    ["Spectre"] = {[1] = 500, [2] = 1700, [3] = 3300, [4] = 4000, [5] = 7900},
-    ["Balloon Pal"] = {[1] = 350, [2] = 1600, [3] = 2300, [4] = 3200, [5] = 6000},
-    ["Discount Dog"] = {[1] = 400, [2] = 1200, [3] = 2500, [4] = 3500, [5] = 5500}
+    ["Slime King"] = {[1] = 700, [2] = 1500, [3] = 2500, [4] = 3800, [5] = 6000}
 }
 
--- UI Construction
-local pGui = player:WaitForChild("PlayerGui")
-local autoSkipObj = pGui:WaitForChild("Menu"):WaitForChild("Info"):WaitForChild("AutoSkip")
-local sg = Instance.new("ScreenGui", pGui); sg.Name = "THULogger_V80_Integrated"; sg.ResetOnSpawn = false
-local main = Instance.new("Frame", sg); main.Size = UDim2.new(0, 280, 0, 450); main.Position = UDim2.new(0.05, 0, 0.2, 0); main.BackgroundColor3 = Color3.fromRGB(20, 20, 20); main.Active = true; main.Draggable = true; Instance.new("UICorner", main)
-local title = Instance.new("TextLabel", main); title.Size = UDim2.new(1, 0, 0, 40); title.Text = "THU LOGGER"; title.TextColor3 = Color3.new(1, 1, 1); title.BackgroundColor3 = Color3.fromRGB(35, 35, 35); title.Font = Enum.Font.SourceSansBold; title.TextSize = 20; Instance.new("UICorner", title)
-local backBtn = Instance.new("TextButton", main); backBtn.Size = UDim2.new(0, 40, 0, 40); backBtn.Position = UDim2.new(0, 5, 0, 0); backBtn.Text = "←"; backBtn.TextColor3 = Color3.new(1, 1, 1); backBtn.BackgroundTransparency = 1; backBtn.Font = Enum.Font.SourceSansBold; backBtn.TextSize = 28; backBtn.Visible = false; backBtn.ZIndex = 20
-local startMenu = Instance.new("Frame", main); startMenu.Size = UDim2.new(1, 0, 1, 0); startMenu.BackgroundTransparency = 1; startMenu.ZIndex = 10
-local createScroll = Instance.new("ScrollingFrame", main); createScroll.Size = UDim2.new(1, -20, 1, -165); createScroll.Position = UDim2.new(0, 10, 0, 50); createScroll.BackgroundTransparency = 1; createScroll.ScrollBarThickness = 4; createScroll.Visible = false; Instance.new("UIListLayout", createScroll).Padding = UDim.new(0, 5)
-local loadScroll = Instance.new("ScrollingFrame", main); loadScroll.Size = UDim2.new(1, -20, 1, -165); loadScroll.Position = UDim2.new(0, 10, 0, 50); loadScroll.BackgroundTransparency = 1; loadScroll.ScrollBarThickness = 4; loadScroll.Visible = false; Instance.new("UIListLayout", loadScroll).Padding = UDim.new(0, 5)
-local saveOnlyBtn = Instance.new("TextButton", main); saveOnlyBtn.Size = UDim2.new(1, -20, 0, 45); saveOnlyBtn.Position = UDim2.new(0, 10, 1, -105); saveOnlyBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 200); saveOnlyBtn.Text = "SAVE STRAT TO FILE"; saveOnlyBtn.TextColor3 = Color3.new(1, 1, 1); saveOnlyBtn.Font = Enum.Font.SourceSansBold; saveOnlyBtn.TextSize = 16; saveOnlyBtn.Visible = false; Instance.new("UICorner", saveOnlyBtn)
-local clearBtn = Instance.new("TextButton", main); clearBtn.Size = UDim2.new(1, -20, 0, 45); clearBtn.Position = UDim2.new(0, 10, 1, -55); clearBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40); clearBtn.Text = "RESET ALL"; clearBtn.TextColor3 = Color3.new(1, 1, 1); clearBtn.Font = Enum.Font.SourceSansBold; clearBtn.TextSize = 16; clearBtn.Visible = false; Instance.new("UICorner", clearBtn)
-local executeBtn = Instance.new("TextButton", main); executeBtn.Size = UDim2.new(1, -20, 0, 50); executeBtn.Position = UDim2.new(0, 10, 1, -60); executeBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 100); executeBtn.Text = "START"; executeBtn.TextColor3 = Color3.new(1, 1, 1); executeBtn.Font = Enum.Font.SourceSansBold; executeBtn.TextSize = 20; executeBtn.Visible = false; Instance.new("UICorner", executeBtn)
-
--- UI Helpers
-local function clearUI(target) for _, v in ipairs(target:GetChildren()) do if v:IsA("GuiObject") then v:Destroy() end end Instance.new("UIListLayout", target).Padding = UDim.new(0, 5) LoadedLogsRef = {} end
-local function autoTickLog(actionCode) for _, data in ipairs(LoadedLogsRef) do if data.Tick.Text == "" and data.Code:find(actionCode, 1, true) then data.Tick.Text = "✓" break end end end
-local function addLog(text, code, color, targetScroll, isLoaded)
-    if not isLoaded then table.insert(SessionLogs, code) end
-    local btn = Instance.new("TextButton", targetScroll); btn.Size = UDim2.new(1, -10, 0, 35); btn.BackgroundColor3 = color or Color3.fromRGB(45, 45, 45); btn.Text = "  " .. text; btn.TextColor3 = Color3.new(1, 1, 1); btn.Font = Enum.Font.SourceSansBold; btn.TextSize = 15; btn.TextXAlignment = Enum.TextXAlignment.Left; btn.ClipsDescendants = true; Instance.new("UICorner", btn)
-    local tick = Instance.new("TextLabel", btn); tick.Size = UDim2.new(0, 40, 1, 0); tick.Position = UDim2.new(1, -45, 0, 0); tick.BackgroundTransparency = 1; tick.Text = ""; tick.TextColor3 = Color3.fromRGB(0, 255, 100); tick.TextSize = 22; tick.Font = Enum.Font.SourceSansBold
-    if isLoaded then table.insert(LoadedLogsRef, {Code = code, Tick = tick}) end
-    btn.MouseButton1Click:Connect(function() if setclipboard then setclipboard(code) end local oldText = btn.Text; btn.Text = "  COPIED!"; task.wait(0.5); btn.Text = oldText end)
-    targetScroll.CanvasSize = UDim2.new(0, 0, 0, targetScroll.UIListLayout.AbsoluteContentSize.Y + 10)
+---------------------------------------------------------
+-- RAYFIELD UI INITIALIZATION
+---------------------------------------------------------
+local g = getgenv()
+if g.UTH_Rayfield and typeof(g.UTH_Rayfield.Destroy) == "function" then
+    pcall(function() g.UTH_Rayfield:Destroy() end)
 end
 
--- Script Parsing and Loading
-local function parseScript(content, isLocked)
-    CurrentLoadedContent = content; clearUI(loadScroll)
-    for line in content:gmatch("[^\r\n]+") do
-        if line:find('QueuePlace') then addLog("Place "..line:match('"(.-)"'), line, Color3.fromRGB(40,100,40), loadScroll, true)
-        elseif line:find('QueueUpgrade') then addLog("Upgrade "..line:match('"(.-)"'), line, Color3.fromRGB(40,60,100), loadScroll, true)
-        elseif line:find('QueueSell') then addLog("Sell "..line:match('"(.-)"'), line, Color3.fromRGB(150,50,50), loadScroll, true)
-        elseif line:find('QueueBulkSell') then addLog("Bulk Sell "..line:match('"(.-)"'), line, Color3.fromRGB(150,0,0), loadScroll, true)
-        elseif line:find('QueueAbility') then addLog("Ability "..line:match('"(.-)"'), line, Color3.fromRGB(200,100,0), loadScroll, true)
-        elseif line:find('QueueTarget') then addLog("Target "..line:match('"(.-)"'), line, Color3.fromRGB(100, 150, 50), loadScroll, true)
-        elseif line:find('QueueWaitMana') then addLog("Wait Mana: "..line:match('%((%d+)%)'), line, Color3.fromRGB(100,100,40), loadScroll, true)
-        elseif line:find('QueueSkip') then addLog("Manual Skip", line, Color3.fromRGB(120,80,0), loadScroll, true)
-        elseif line:find('EnableAutoSkip') then addLog("AutoSkip: ON", line, Color3.fromRGB(0,100,150), loadScroll, true)
-        elseif line:find('DisableAutoSkip') then addLog("AutoSkip: OFF", line, Color3.fromRGB(0,100,150), loadScroll, true)
-        elseif line:find('VoteMode') then addLog("Vote: "..line:match('"(.-)"'), line, Color3.fromRGB(0,150,150), loadScroll, true)
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/stewingit/RayfieldBuilder/refs/heads/main/source.lua'))()
+g.UTH_Rayfield = Rayfield
+
+local Window = Rayfield:CreateWindow({
+    Name = "THU Logger V80",
+    Icon = "scroll",
+    LoadingTitle = "THU Logger",
+    LoadingSubtitle = "Initializing Automation...",
+    ConfigurationSaving = { Enabled = false }
+})
+
+local MiscTab = Window:CreateTab("Misc", "settings")
+local StatsTab = Window:CreateTab("Stats", "bar-chart-2") 
+local CreateTab = Window:CreateTab("Create", "plus") 
+local LoadTab = Window:CreateTab("Load", "folder")
+local LoadedTab = Window:CreateTab("Loaded", "check") 
+
+local CreateLogElements = {} 
+local LoadLogElements = {}
+local FileLogElements = {}
+local SaveNameInput = ""
+
+-- Variables for sections
+local StartSection, NameInput, BeginButton, NameLabel
+local ManageSection, LogSection, LoadedExecSection, FileListSection
+local SaveButton, ResetButton
+
+-- Forward declare UI functions
+local createManageUI, setupInitialCreateUI, clearAllData, refreshFiles, parseScript, autoTickLog
+
+-- Visibility Toggle
+local function updateTabVisibility(isLoadedActive)
+    pcall(function()
+        local coreGui = game:GetService("CoreGui")
+        local rayfieldUI = coreGui:FindFirstChild("Rayfield") or coreGui:FindFirstChild("THU Logger V80")
+        if rayfieldUI then
+            for _, v in pairs(rayfieldUI:GetDescendants()) do
+                if v:IsA("TextLabel") and v.Text == "Create" then
+                    v.Parent.Visible = not isLoadedActive
+                elseif v:IsA("TextLabel") and v.Text == "Loaded" then
+                    v.Parent.Visible = isLoadedActive
+                end
+            end
+        end
+    end)
+end
+
+---------------------------------------------------------
+-- STATS TAB LOGIC
+---------------------------------------------------------
+local StatParagraphs = {}
+
+local function refreshStatsUI()
+    local troops = TroopFolder:GetChildren()
+    local currentUnits = {}
+    local sTime = Workspace:GetServerTimeNow()
+
+    for i, unit in ipairs(troops) do
+        currentUnits[unit] = true
+        local stats = unit:FindFirstChild("Stats")
+        if stats then
+            local unitModule = toStr(stats:FindFirstChild("Module") or unit)
+            local level = stats:FindFirstChild("Level") and stats.Level.Value or 1
+            local data = findUnitData(unitModule)
+            
+            local status = "MAX"
+            local cooldownText = ""
+
+            if data then
+                local stg = data.Stages or data.Levels or data.Upgrades
+                local cur, nxt = stg[level], stg[level + 1]
+
+                if cur and cur.SpecialAbility then
+                    local sa = cur.SpecialAbility
+                    local cost = getFinalCost(sa.Cost or sa.Price, stats, true)
+                    status = ("%s [%s]"):format(sa.Title or "Ability", cost or "Active")
+                    
+                    local aTick = stats:FindFirstChild("AbilityTick")
+                    if aTick then
+                        local cd = sa.Cooldown or sa.CD or sa.Duration or 0
+                        local remaining = (aTick.Value + cd) - sTime
+                        if remaining > 0 then
+                            cooldownText = ("\n   > ⏳ (%.1fs / %ds)"):format(remaining, cd)
+                        else
+                            cooldownText = ("\n   > ✅ (READY / %ds)"):format(cd)
+                        end
+                    end
+                elseif nxt then
+                    status = ("Upgrade [%s]"):format(getFinalCost(nxt.Cost or nxt.Price, stats, false) or "???")
+                end
+            end
+
+            local titleText = ("[%d] %s (Lvl %s)"):format(i, unitModule, tostring(level))
+            local contentText = ("Status: %s%s\nTarget: %s"):format(
+                status, cooldownText, toStr(stats:FindFirstChild("TargetType") or "N/A")
+            )
+
+            if StatParagraphs[unit] then
+                pcall(function() StatParagraphs[unit]:Set({Title = titleText, Content = contentText}) end)
+            else
+                pcall(function() 
+                    StatParagraphs[unit] = StatsTab:CreateParagraph({Title = titleText, Content = contentText}) 
+                end)
+            end
         end
     end
-    if isLocked then
-        loadScroll.Size = UDim2.new(1, -20, 1, -115); loadScroll.Position = UDim2.new(0, 10, 0, 50)
-        startMenu.Visible = false; backBtn.Visible = false; executeBtn.Visible = false; saveOnlyBtn.Visible = false; clearBtn.Visible = false; title.Text = "AUTO STRAT ACTIVE"
-    else
-        loadScroll.Size = UDim2.new(1, -20, 1, -165); loadScroll.Position = UDim2.new(0, 10, 0, 50)
-        startMenu.Visible = false; backBtn.Visible = true; executeBtn.Visible = true; title.Text = "LOADED STRAT"
+
+    -- Delete UI paragraphs for sold/removed units
+    for unit, paragraph in pairs(StatParagraphs) do
+        if not currentUnits[unit] then
+            pcall(function() paragraph:Destroy() end)
+            StatParagraphs[unit] = nil
+        end
     end
-    loadScroll.Visible = true
 end
 
--- UI Logic Setup
-local createBtn = Instance.new("TextButton", startMenu); createBtn.Size = UDim2.new(0.85, 0, 0, 60); createBtn.Position = UDim2.new(0.075, 0, 0.25, 0); createBtn.BackgroundColor3 = Color3.fromRGB(40, 120, 40); createBtn.Text = "CREATE NEW SCRIPT"; createBtn.TextColor3 = Color3.new(1, 1, 1); createBtn.Font = Enum.Font.SourceSansBold; createBtn.TextSize = 18; Instance.new("UICorner", createBtn)
-local loadBtn = Instance.new("TextButton", startMenu); loadBtn.Size = UDim2.new(0.85, 0, 0, 60); loadBtn.Position = UDim2.new(0.075, 0, 0.45, 0); loadBtn.BackgroundColor3 = Color3.fromRGB(40, 60, 120); loadBtn.Text = "LOAD SAVED SCRIPT"; loadBtn.TextColor3 = Color3.new(1, 1, 1); loadBtn.Font = Enum.Font.SourceSansBold; loadBtn.TextSize = 18; Instance.new("UICorner", loadBtn)
+StatsTab:CreateButton({
+    Name = "🔄 Refresh Stats",
+    Callback = function()
+        refreshStatsUI()
+        Rayfield:Notify({Title = "Stats Updated", Content = "Hero stats and cooldowns refreshed.", Duration = 2, Image = "refresh-ccw"})
+    end
+})
 
-createBtn.MouseButton1Click:Connect(function() IsCreateMode = true; startMenu.Visible = false; loadScroll.Visible = false; createScroll.Visible = true; saveOnlyBtn.Visible = true; clearBtn.Visible = true; backBtn.Visible = true; executeBtn.Visible = false; title.Text = "CREATING STRAT" end)
-loadBtn.MouseButton1Click:Connect(function() 
-    IsCreateMode = false; clearUI(loadScroll); startMenu.Visible = false; createScroll.Visible = false; loadScroll.Visible = true; backBtn.Visible = true; executeBtn.Visible = false; title.Text = "SELECT A FILE"
-    if listfiles then for _, file in ipairs(listfiles(FolderName)) do local clean = file:gsub(FolderName.."/", ""):gsub(".lua", ""); local f = Instance.new("TextButton", loadScroll); f.Size = UDim2.new(1, -10, 0, 45); f.BackgroundColor3 = Color3.fromRGB(60,60,60); f.Text = clean; f.TextColor3 = Color3.new(1,1,1); f.Font = Enum.Font.SourceSansBold; f.TextSize = 16; Instance.new("UICorner", f); f.MouseButton1Click:Connect(function() parseScript(readfile(file), false) end) end end 
+-- Passive loop to continually update ability cooldowns smoothly on the UI
+task.spawn(function()
+    while task.wait(0.5) do
+        pcall(refreshStatsUI)
+    end
 end)
 
-backBtn.MouseButton1Click:Connect(function() startMenu.Visible = true; createScroll.Visible = false; loadScroll.Visible = false; saveOnlyBtn.Visible = false; clearBtn.Visible = false; backBtn.Visible = false; executeBtn.Visible = false; title.Text = "THU LOGGER" end)
-
-executeBtn.MouseButton1Click:Connect(function() 
-    if CurrentLoadedContent ~= "" then 
-        executeBtn.Visible = false; title.Text = "STRAT ACTIVE"
-        local scriptToRun = 'loadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n' .. CurrentLoadedContent .. '\nStartAutomation()'
-        local f = loadstring(scriptToRun)
-        if f then task.spawn(f) end 
-    end 
-end)
-
--- Queue Utility Auto-Loader Setup
-_G.LoadExternalStrat = function(content)
-    IsAutoQueue = true
-    parseScript(content, true)
-    
-    local scriptToRun = 'loadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n' .. content .. '\nStartAutomation()'
-    local f = loadstring(scriptToRun)
-    if f then task.spawn(f) end 
-end
-
-saveOnlyBtn.MouseButton1Click:Connect(function()
-    local over = Instance.new("Frame", main); over.Size = UDim2.new(1,0,1,0); over.BackgroundColor3 = Color3.new(0,0,0); over.BackgroundTransparency = 0.5; over.ZIndex = 100; Instance.new("UICorner", over)
-    local pop = Instance.new("Frame", over); pop.Size = UDim2.new(0,220,0,120); pop.Position = UDim2.new(0.5,-110,0.5,-60); pop.BackgroundColor3 = Color3.fromRGB(40,40,40); Instance.new("UICorner", pop)
-    local box = Instance.new("TextBox", pop); box.Size = UDim2.new(1,-20,0,40); box.Position = UDim2.new(0,10,0,15); box.BackgroundColor3 = Color3.fromRGB(20,20,20); box.PlaceholderText = "Script Name..."; box.Text = ""; box.TextColor3 = Color3.new(1,1,1); box.TextSize = 18; box.Font = Enum.Font.SourceSansBold; Instance.new("UICorner", box)
-    local s = Instance.new("TextButton", pop); s.Size = UDim2.new(1,-20,0,35); s.Position = UDim2.new(0,10,1,-45); s.BackgroundColor3 = Color3.fromRGB(0, 120, 200); s.Text = "SAVE"; s.TextColor3 = Color3.new(1,1,1); s.Font = Enum.Font.SourceSansBold; Instance.new("UICorner", s)
-    s.MouseButton1Click:Connect(function() 
-        if box.Text ~= "" then 
-            local fullScript = '-- Recorded Strat\nloadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n\n' .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()'
-            writefile(FolderName.."/"..box.Text..".lua", fullScript)
-            over:Destroy(); saveOnlyBtn.Text = "SAVED!"; task.wait(1); saveOnlyBtn.Text = "SAVE STRAT TO FILE" 
+---------------------------------------------------------
+-- CREATE TAB UI
+---------------------------------------------------------
+-- Strikethrough Logic
+autoTickLog = function(actionCode)
+    for _, data in ipairs(LoadedLogsRef) do 
+        if not data.Ticked and data.Code:find(actionCode, 1, true) then 
+            data.Ticked = true
+            pcall(function() data.Btn:Set("<s>" .. data.OriginalText .. "</s>") end)
+            break 
         end 
-    end)
-    local c = Instance.new("TextButton", over); c.Size = UDim2.new(0, 20, 0, 20); c.Position = UDim2.new(0.5, 95, 0.5, -55); c.Text = "X"; c.TextColor3 = Color3.new(1,0,0); c.BackgroundTransparency = 1; c.MouseButton1Click:Connect(function() over:Destroy() end)
+    end
+end
+
+-- Manage UI
+createManageUI = function()
+    if ManageSection then return end
+    
+    NameLabel = CreateTab:CreateLabel("Currently Recording: " .. SaveNameInput)
+    ManageSection = CreateTab:CreateSection("Manage Strategy")
+    
+    SaveButton = CreateTab:CreateButton({
+        Name = "💾 Save Strat to File",
+        Callback = function()
+            if SaveNameInput ~= "" then 
+                local fullScript = 'loadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n\n' .. table.concat(SessionLogs, "\n") .. '\n\nStartAutomation()'
+                writefile(FolderName.."/"..SaveNameInput..".lua", fullScript)
+                Rayfield:Notify({Title = "Saved", Content = "Saved as " .. SaveNameInput .. ".lua", Duration = 3, Image = "save"})
+                refreshFiles()
+            else
+                Rayfield:Notify({Title = "Error", Content = "Name not found!", Duration = 3, Image = "circle-alert"})
+            end
+        end
+    })
+    
+    ResetButton = CreateTab:CreateButton({
+        Name = "🗑️ Reset / Clear All",
+        Callback = function() 
+            clearAllData()
+        end
+    })
+
+    LogSection = CreateTab:CreateSection("--- Action Logs ---")
+end
+
+-- Clear Logic
+clearAllData = function()
+    IsResetting = true
+    
+    for t, _ in pairs(TroopMapping) do 
+        if t and t.Parent then 
+            task.spawn(function() TroopEvent:FireServer("Sell", t) end) 
+        end 
+    end
+    
+    SessionLogs = {}
+    TroopCounts = {}
+    TroopMapping = {}
+    GlobalAbilityCounts = {}
+    UnitIDToHero = {}
+    CurrentLoadedContent = ""
+    IsAutoQueue = false
+    LoadedLogsRef = {}
+    
+    if NameLabel then pcall(function() NameLabel:Destroy() end); NameLabel = nil end
+    if ManageSection then pcall(function() ManageSection:Destroy() end); ManageSection = nil end
+    if SaveButton then pcall(function() SaveButton:Destroy() end); SaveButton = nil end
+    if ResetButton then pcall(function() ResetButton:Destroy() end); ResetButton = nil end
+    if LogSection then pcall(function() LogSection:Destroy() end); LogSection = nil end
+    
+    for _, el in ipairs(CreateLogElements) do pcall(function() el:Destroy() end) end
+    CreateLogElements = {}
+    
+    if LoadedExecSection then pcall(function() LoadedExecSection:Destroy() end); LoadedExecSection = nil end
+    for _, el in ipairs(LoadLogElements) do pcall(function() el:Destroy() end) end
+    LoadLogElements = {}
+    LoadedExecSection = LoadedTab:CreateSection("Execution Steps")
+    
+    updateTabVisibility(false)
+    setupInitialCreateUI() 
+    
+    Rayfield:Notify({Title = "Cleared", Content = "Logs wiped and troops sold.", Duration = 3, Image = "trash"})
+    
+    task.delay(1, function() IsResetting = false end)
+end
+
+-- Initial Setup
+setupInitialCreateUI = function()
+    IsRecording = false; SaveNameInput = ""
+    if NameLabel then pcall(function() NameLabel:Destroy() end); NameLabel = nil end
+    if StartSection then pcall(function() StartSection:Destroy() end); StartSection = nil end
+    if NameInput then pcall(function() NameInput:Destroy() end); NameInput = nil end
+    if BeginButton then pcall(function() BeginButton:Destroy() end); BeginButton = nil end
+
+    StartSection = CreateTab:CreateSection("Start New Strategy")
+    NameInput = CreateTab:CreateInput({
+        Name = "Name Strategy",
+        CurrentValue = "",
+        PlaceholderText = "e.g., GodlyStrat1...",
+        Callback = function(Text) SaveNameInput = Text end
+    })
+    
+    BeginButton = CreateTab:CreateButton({
+        Name = "Begin Creating",
+        Callback = function()
+            if SaveNameInput ~= "" then
+                if StartSection then pcall(function() StartSection:Destroy() end); StartSection = nil end
+                if NameInput then pcall(function() NameInput:Destroy() end); NameInput = nil end
+                if BeginButton then pcall(function() BeginButton:Destroy() end); BeginButton = nil end
+                IsRecording = true
+                createManageUI()
+                Rayfield:Notify({Title = "Recording Started", Content = "Logging: " .. SaveNameInput, Duration = 3, Image = "video"})
+            else
+                Rayfield:Notify({Title = "Error", Content = "Please enter a name!", Duration = 3})
+            end
+        end
+    })
+end
+
+-- EMOJI PREFIX MAPPER
+local function getEmojiPrefix(line)
+    if line:find('QueuePlace') then return "🟢 Place"
+    elseif line:find('QueueUpgrade') then return "🔵 Upgrade"
+    elseif line:find('QueueSell') then return "🔴 Sell"
+    elseif line:find('QueueBulkSell') then return "🟥 Bulk Sell"
+    elseif line:find('QueueAbility') then return "🟠 Ability"
+    elseif line:find('QueueTarget') then return "🎯 Target"
+    elseif line:find('QueueWaitMana') then return "🟡 Wait Mana"
+    elseif line:find('QueueSkip') then return "⏩ Manual Skip"
+    elseif line:find('EnableAutoSkip') then return "🔁 AutoSkip: ON"
+    elseif line:find('DisableAutoSkip') then return "🔁 AutoSkip: OFF"
+    elseif line:find('VoteMode') then return "🗳️ Vote"
+    elseif line:find('QueueBulk') then return "🟣 Bulk"
+    else return "⚙️ Action" end
+end
+
+---------------------------------------------------------
+-- QUEUE SYSTEM
+---------------------------------------------------------
+local LogQueue = {}
+RunService.Heartbeat:Connect(function()
+    while #LogQueue > 0 do
+        local args = table.remove(LogQueue, 1)
+        local text, code, isLoaded = args[1], args[2], args[3]
+        if not isLoaded then table.insert(SessionLogs, code) end
+        local targetTab = isLoaded and LoadedTab or CreateTab
+        local btn = targetTab:CreateButton({
+            Name = text,
+            Callback = function()
+                if setclipboard then setclipboard(code) end
+                Rayfield:Notify({Title = "Copied", Content = "Action code copied to clipboard.", Duration = 1, Image = "clipboard"})
+            end
+        })
+        if isLoaded then 
+            table.insert(LoadLogElements, btn)
+            table.insert(LoadedLogsRef, {Code = code, Btn = btn, OriginalText = text, Ticked = false}) 
+        else
+            table.insert(CreateLogElements, btn)
+        end
+    end
 end)
 
+local function safeAddLog(text, code, isLoaded)
+    if not isLoaded and not IsRecording then return end
+    table.insert(LogQueue, {text, code, isLoaded})
+end
+
+parseScript = function(content, isLocked)
+    CurrentLoadedContent = content
+    if LoadedExecSection then pcall(function() LoadedExecSection:Destroy() end); LoadedExecSection = nil end
+    for _, el in pairs(LoadLogElements) do pcall(function() el:Destroy() end) end
+    LoadLogElements = {}; LoadedLogsRef = {}
+    LoadedExecSection = LoadedTab:CreateSection("Execution Steps")
+    
+    for line in content:gmatch("[^\r\n]+") do
+        if not line:find("loadstring") and not line:find("StartAutomation") and line:match("%S") then
+            local prefix = getEmojiPrefix(line)
+            local detail = line:match('"(.-)"') or line:match('%((%d+)%)') or ""
+            if line:find('QueuePlace') then detail = line:match('QueuePlace%("(.-)"') or "" end
+            safeAddLog(detail ~= "" and (prefix .. " " .. detail) or prefix, line, true)
+        end
+    end
+end
+
+-- File List Logic
+refreshFiles = function()
+    if FileListSection then pcall(function() FileListSection:Destroy() end); FileListSection = nil end
+    for _, btn in pairs(FileLogElements) do pcall(function() btn:Destroy() end) end
+    FileLogElements = {}
+
+    FileListSection = LoadTab:CreateSection("Saved Files")
+
+    if listfiles then 
+        for _, file in ipairs(listfiles(FolderName)) do 
+            local clean = file:gsub(FolderName.."/", ""):gsub(".lua", "")
+            local fileBtn = LoadTab:CreateButton({
+                Name = "📂 " .. clean,
+                Callback = function() 
+                    parseScript(readfile(file), false) 
+                    updateTabVisibility(true)
+                    Rayfield:Notify({Title = "In 'Loaded' tab", Content = "Loaded " .. clean, Duration = 3, Image = "file-check"})
+                end
+            })
+            table.insert(FileLogElements, fileBtn)
+        end 
+    end
+end
+
+---------------------------------------------------------
+-- LOADED TAB SETUP & HOOKS
+---------------------------------------------------------
+local startExecutionBtn = LoadedTab:CreateButton({
+    Name = "▶️ START EXECUTION",
+    Callback = function()
+        if CurrentLoadedContent ~= "" then 
+            IsAutoQueue = true 
+            Rayfield:Notify({Title = "Executed", Content = "Strategy started.", Duration = 3, Image = "play"})
+            local scriptToRun = 'loadstring(game:HttpGet("'..ENGINE_LINK..'"))()\n' .. CurrentLoadedContent .. '\nStartAutomation()'
+            local f = loadstring(scriptToRun)
+            if f then task.spawn(f) end 
+        end 
+    end
+})
+
+-- AutoSkip GUI Connection
 autoSkipObj.Changed:Connect(function(val)
     if val ~= LastLoggedAutoSkip then
         LastLoggedAutoSkip = val
         local cmd = val and "EnableAutoSkip()" or "DisableAutoSkip()"
-        autoTickLog(cmd)
-        if not IsAutoQueue then addLog("AutoSkip: "..(val and "Enabled" or "Disabled"), cmd, Color3.fromRGB(0, 100, 150), createScroll, false) end
+        if IsAutoQueue then autoTickLog(cmd) end
+        safeAddLog((val and "🔁 AutoSkip: ON" or "🔁 AutoSkip: OFF"), cmd, false) 
     end
 end)
 
--- COMMAND LOGIC HOOK (V80 Version)
+-- COMMAND LOGIC HOOK
 local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local args = {...}; local method = getnamecallmethod(); local remoteName = tostring(self)
     if method == "FireServer" then
         if remoteName == "ResultEvent" and args[1] == "Retry" then
             task.spawn(function()
-                for _, data in ipairs(LoadedLogsRef) do data.Tick.Text = "" end
-                executeBtn.Visible = true; executeBtn.Text = "START AGAIN"; title.Text = "READY TO REPLAY"
-                TroopCounts = {}; TroopMapping = {}; GlobalAbilityCounts = {}; UnitIDToHero = {}
+                clearAllData() 
             end)
         end
         task.spawn(function()
@@ -225,8 +503,9 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 TroopCounts[cleanName] = (TroopCounts[cleanName] or 0) + 1; local idx = TroopCounts[cleanName]
                 
                 local exactCmd = string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', cleanName, pos.X, pos.Y, pos.Z)
-                autoTickLog('QueuePlace("'..cleanName..'"') -- Using substring search to guarantee match regardless of float precision
-                if not IsAutoQueue then addLog("Place "..cleanName, exactCmd, Color3.fromRGB(40, 100, 40), createScroll, false) end
+                
+                if IsAutoQueue then autoTickLog('QueuePlace("'..cleanName..'"') end
+                safeAddLog("🟢 Place "..cleanName, exactCmd, false)
                 
                 task.delay(0.5, function()
                     for _, v in ipairs(TroopFolder:GetChildren()) do
@@ -241,12 +520,14 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 local unit = args[1]; local d = TroopMapping[unit]
                 if d then
                     local exactCmd = string.format('QueueTarget("%s", %d, "%s")', d.name, d.index, args[2])
-                    autoTickLog(exactCmd)
-                    if not IsAutoQueue then addLog(d.name.." Target: "..args[2], exactCmd, Color3.fromRGB(100, 150, 50), createScroll, false) end
+                    if IsAutoQueue then autoTickLog(exactCmd) end
+                    safeAddLog("🎯 Target "..args[2], exactCmd, false)
                 end
 
-            -- Logic: Troop Events (Upgrade, Ability, Sell, Bulk)
+            -- Logic: Troop Events
             elseif remoteName == "TroopEvent" then
+                if IsResetting then return end 
+                
                 local act = args[1]; local unitIdentifier = args[2]
                 local d
                 if typeof(unitIdentifier) == "number" then
@@ -258,8 +539,8 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                 if d then
                     if act == "Upgrade" then
                         d.level = d.level + 1; local cmd = string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level)
-                        autoTickLog(cmd)
-                        if not IsAutoQueue then addLog(string.format("Upgrade %s %d", d.name, d.index), cmd, Color3.fromRGB(40, 60, 100), createScroll, false) end
+                        if IsAutoQueue then autoTickLog(cmd) end
+                        safeAddLog(string.format("🔵 Upgrade %s %d", d.name, d.index), cmd, false)
                     
                     elseif act == "Ability" then
                         GlobalAbilityCounts[d.name] = (GlobalAbilityCounts[d.name] or 0) + 1
@@ -269,18 +550,18 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                         local manaCmd = string.format('QueueWaitMana(%d)', cost)
                         local abCmd = string.format('QueueAbility("%s", %d)', d.name, d.index)
                         
-                        autoTickLog(manaCmd)
-                        autoTickLog(abCmd)
-                        
-                        if not IsAutoQueue then
-                            addLog("Wait Mana: "..cost, manaCmd, Color3.fromRGB(100, 100, 40), createScroll, false)
-                            addLog(d.name.." Ability", abCmd, Color3.fromRGB(200, 100, 0), createScroll, false)
+                        if IsAutoQueue then
+                            autoTickLog(manaCmd)
+                            autoTickLog(abCmd)
                         end
+                        
+                        safeAddLog("🟡 Wait Mana: "..cost, manaCmd, false)
+                        safeAddLog("🟠 "..d.name.." Ability", abCmd, false)
 
                     elseif act == "Sell" then
                         local cmd = string.format('QueueSell("%s", %d)', d.name, d.index)
-                        autoTickLog(cmd)
-                        if not IsAutoQueue then addLog("Sell "..d.name, cmd, Color3.fromRGB(150, 50, 50), createScroll, false) end
+                        if IsAutoQueue then autoTickLog(cmd) end
+                        safeAddLog("🔴 Sell "..d.name, cmd, false)
                         
                         if typeof(unitIdentifier) == "Instance" then TroopMapping[unitIdentifier] = nil 
                         else for k, v in pairs(TroopMapping) do if v.id == unitIdentifier then TroopMapping[k] = nil break end end end
@@ -288,8 +569,8 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                     elseif act == "BulkSell" then
                         local heroType = args[3]
                         local cmd = string.format('QueueBulkSell("%s")', heroType)
-                        autoTickLog(cmd)
-                        if not IsAutoQueue then addLog("Bulk Sell "..heroType, cmd, Color3.fromRGB(150, 0, 0), createScroll, false) end
+                        if IsAutoQueue then autoTickLog(cmd) end
+                        safeAddLog("🟥 Bulk Sell "..heroType, cmd, false)
                         
                         for unit, data in pairs(TroopMapping) do if data.name == heroType then TroopMapping[unit] = nil end end
 
@@ -300,32 +581,31 @@ oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
                         end end
                         
                         local cmd = string.format('QueueBulk("%s")', bn)
-                        if cost > 0 then autoTickLog(string.format('QueueWaitMana(%d)', cost)) end
-                        autoTickLog(cmd)
                         
-                        if not IsAutoQueue then 
-                            if cost > 0 then addLog("Wait Mana: "..cost, string.format('QueueWaitMana(%d)', cost), Color3.fromRGB(100, 100, 40), createScroll, false) end
-                            addLog("Bulk "..bn, cmd, Color3.fromRGB(80, 40, 120), createScroll, false) 
+                        if IsAutoQueue then
+                            if cost > 0 then autoTickLog(string.format('QueueWaitMana(%d)', cost)) end
+                            autoTickLog(cmd)
                         end
+                        
+                        if cost > 0 then safeAddLog("🟡 Wait Mana: "..cost, string.format('QueueWaitMana(%d)', cost), false) end
+                        safeAddLog("🟣 Bulk "..bn, cmd, false) 
                     end
                 end
             elseif remoteName == "SkipWave" then
                 if autoSkipObj.Value == false then 
-                    autoTickLog("QueueSkip()")
-                    if not IsAutoQueue then addLog("Manual Skip", "QueueSkip()", Color3.fromRGB(120, 80, 0), createScroll, false) end 
+                    if IsAutoQueue then autoTickLog("QueueSkip()") end
+                    safeAddLog("⏩ Manual Skip", "QueueSkip()", false) 
                 end
             elseif remoteName == "ModeVote" then
                 local cmd = string.format('VoteMode("%s")', tostring(args[1]))
-                autoTickLog(cmd)
-                if not IsAutoQueue then addLog("Vote: "..tostring(args[1]), cmd, Color3.fromRGB(0, 150, 150), createScroll, false) end
+                if IsAutoQueue then autoTickLog(cmd) end
+                safeAddLog("🗳️ Vote: "..tostring(args[1]), cmd, false)
             end
         end)
     end
     return oldNamecall(self, ...)
 end)
 
-clearBtn.MouseButton1Click:Connect(function()
-    if not ConfirmDelete then ConfirmDelete = true; clearBtn.Text = "Sure? (Sells All)"; task.delay(3, function() ConfirmDelete = false; clearBtn.Text = "RESET ALL" end)
-    else for t, _ in pairs(TroopMapping) do if t and t.Parent then task.spawn(function() TroopEvent:FireServer("Sell", t) end) end end
-    SessionLogs = {}; TroopCounts = {}; TroopMapping = {}; GlobalAbilityCounts = {}; UnitIDToHero = {}; clearUI(createScroll); ConfirmDelete = false; clearBtn.Text = "CLEARED"; task.wait(1); clearBtn.Text = "RESET ALL" end
-end)
+setupInitialCreateUI()
+refreshFiles()
+updateTabVisibility(false)
