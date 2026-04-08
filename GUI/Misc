@@ -1,0 +1,112 @@
+-- PART 1: MISC, SETUP, & UI INIT
+getgenv().THU_Logger = {
+    SessionLogs = {}, TroopCounts = {}, TroopMapping = {}, GlobalAbilityCounts = {},
+    UnitIDToHero = {}, LoadedLogsRef = {}, StatParagraphs = {}, CreateLogElements = {},
+    LoadLogElements = {}, FileLogElements = {}, SaveNameInput = "", CurrentLoadedContent = "",
+    IsCreateMode = true, IsAutoQueue = false, IsRecording = false, IsResetting = false,
+    FolderName = "UTH Logged Strats", LastLoggedAutoSkip = nil,
+    ENGINE_LINK = "https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/Engine"
+}
+local G = getgenv().THU_Logger
+
+G.Players = game:GetService("Players")
+G.RS = game:GetService("ReplicatedStorage")
+G.RunService = game:GetService("RunService")
+G.Workspace = game:GetService("Workspace")
+local player = G.Players.LocalPlayer
+local pGui = player:WaitForChild("PlayerGui")
+G.autoSkipObj = pGui:WaitForChild("Menu"):WaitForChild("Info"):WaitForChild("AutoSkip")
+G.TroopFolder = G.Workspace:WaitForChild("Troop")
+
+local DataPath = G.Workspace:WaitForChild("GameStuff"):WaitForChild("Data"):WaitForChild(player.Name)
+local DeployedFolder = DataPath:WaitForChild("Deployed")
+G.TroopEvent = G.RS:WaitForChild("Events"):WaitForChild("TroopEvent")
+
+if makefolder then pcall(function() makefolder(G.FolderName) end) end
+
+-- Helper Logic
+G.toStr = function(val)
+    return (typeof(val) == "Instance" and (val:IsA("ValueBase") and tostring(val.Value) or val.Name)) or tostring(val)
+end
+
+G.getFinalCost = function(raw, unitStats, isAbility)
+    local base = typeof(raw) == "function" and (select(2, pcall(raw)) or 0) or tonumber(raw) or 0
+    if base == 0 then return nil end
+    local mult = 1
+    if not isAbility then
+        local bf = unitStats:FindFirstChild("BonusFolder")
+        if bf then
+            for _, buff in ipairs(bf:GetChildren()) do
+                local c = buff:FindFirstChild("Cost")
+                if c and c:IsA("ValueBase") then mult = mult * (tonumber(c.Value) or 1) end
+            end
+        end
+    end
+    return tostring(math.floor(base * mult))
+end
+
+G.findUnitData = function(name)
+    local paths = {G.RS:FindFirstChild("Troops"), G.RS:FindFirstChild("Units"), G.RS}
+    for _, p in ipairs(paths) do
+        if not p then continue end
+        local obj = (p.Name == name and p) or p:FindFirstChild(name, true)
+        if obj and obj:IsA("ModuleScript") then
+            local s, data = pcall(require, obj)
+            if s and (data.Stages or data.Levels or data.Upgrades) then return data end
+        end
+    end
+end
+
+G.getAbilityCost = function(heroName, unitInst)
+    local data = G.findUnitData(heroName)
+    local stats = unitInst and unitInst:FindFirstChild("Stats")
+    if data and stats then
+        local level = stats:FindFirstChild("Level") and stats.Level.Value or 1
+        local stg = data.Stages or data.Levels or data.Upgrades
+        local cur = stg[level]
+        if cur and cur.SpecialAbility then
+            local raw = cur.SpecialAbility.Cost or cur.SpecialAbility.Price
+            return tonumber(G.getFinalCost(raw, stats, true)) or 0
+        end
+    end
+    return 0
+end
+
+-- UI Init
+if getgenv().UTH_Rayfield and typeof(getgenv().UTH_Rayfield.Destroy) == "function" then
+    pcall(function() getgenv().UTH_Rayfield:Destroy() end)
+end
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/stewingit/stewfield/refs/heads/main/source.lua'))()
+getgenv().UTH_Rayfield = Rayfield
+G.Rayfield = Rayfield
+
+G.Window = Rayfield:CreateWindow({
+    Name = "THU Logger V80", Icon = "scroll",
+    LoadingTitle = "THU Logger", LoadingSubtitle = "Initializing Automation...",
+    ConfigurationSaving = { Enabled = false }
+})
+
+G.MiscTab = G.Window:CreateTab("Misc", "settings")
+G.StatsTab = G.Window:CreateTab("Stats", "bar-chart-2") 
+G.CreateTab = G.Window:CreateTab("Create", "plus") 
+G.LoadTab = G.Window:CreateTab("Load", "folder")
+G.LoadedTab = G.Window:CreateTab("Loaded", "check") 
+
+G.updateTabVisibility = function(isLoadedActive)
+    pcall(function()
+        local coreGui = game:GetService("CoreGui")
+        local rayfieldUI = coreGui:FindFirstChild("Rayfield") or coreGui:FindFirstChild("THU Logger V80")
+        if rayfieldUI then
+            for _, v in pairs(rayfieldUI:GetDescendants()) do
+                if v:IsA("TextLabel") and v.Text == "Create" then
+                    v.Parent.Visible = not isLoadedActive
+                elseif v:IsA("TextLabel") and v.Text == "Loaded" then
+                    v.Parent.Visible = isLoadedActive
+                end
+            end
+        end
+    end)
+end
+
+-- > CHAIN TO PART 2
+loadstring(game:HttpGet("https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/GUI/Stats"))()
