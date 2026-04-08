@@ -1,0 +1,151 @@
+-- PART 4: LOADED TAB & HOOKS
+local G = getgenv().THU_Logger
+
+G.startExecutionBtn = G.LoadedTab:CreateButton({
+    Name = "▶️ START EXECUTION",
+    Callback = function()
+        if G.CurrentLoadedContent ~= "" then 
+            G.IsAutoQueue = true 
+            G.Rayfield:Notify({Title = "Executed", Content = "Strategy started.", Duration = 3, Image = "play"})
+            local scriptToRun = 'loadstring(game:HttpGet("'..G.ENGINE_LINK..'"))()\n' .. G.CurrentLoadedContent .. '\nStartAutomation()'
+            local f = loadstring(scriptToRun)
+            if f then task.spawn(f) end 
+        end 
+    end
+})
+
+G.autoSkipObj.Changed:Connect(function(val)
+    if val ~= G.LastLoggedAutoSkip then
+        G.LastLoggedAutoSkip = val
+        local cmd = val and "EnableAutoSkip()" or "DisableAutoSkip()"
+        if G.IsAutoQueue then G.autoTickLog(cmd) end
+        G.safeAddLog((val and "🔁 AutoSkip: ON" or "🔁 AutoSkip: OFF"), cmd, false) 
+    end
+end)
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local args = {...}; local method = getnamecallmethod(); local remoteName = tostring(self)
+    if method == "FireServer" then
+        if remoteName == "ResultEvent" and args[1] == "Retry" then
+            task.spawn(function() G.clearAllData() end)
+        end
+        task.spawn(function()
+            if remoteName == "TroopPlace" and typeof(args[2]) == "Vector3" then
+                local rawName = args[1].Name
+                local pos = args[2]
+                local unitID = args[3]
+                local cleanName = rawName:gsub(" Point", "")
+                
+                G.UnitIDToHero[unitID] = cleanName
+                G.TroopCounts[cleanName] = (G.TroopCounts[cleanName] or 0) + 1; local idx = G.TroopCounts[cleanName]
+                local exactCmd = string.format('QueuePlace("%s", %.4f, %.4f, %.4f)', cleanName, pos.X, pos.Y, pos.Z)
+                
+                if G.IsAutoQueue then G.autoTickLog('QueuePlace("'..cleanName..'"') end
+                G.safeAddLog("🟢 Place "..cleanName, exactCmd, false)
+                
+                task.delay(0.5, function()
+                    for _, v in ipairs(G.TroopFolder:GetChildren()) do
+                        if not G.TroopMapping[v] and (v:GetAttribute("UnitSeed") == unitID or (v:GetModelCFrame().Position - pos).Magnitude < 5) then
+                            G.TroopMapping[v] = {name = cleanName, index = idx, level = 1, abilityCount = 0, id = unitID}; break
+                        end
+                    end
+                end)
+
+            elseif remoteName == "UpdateTargeting" then
+                local unit = args[1]; local d = G.TroopMapping[unit]
+                if d then
+                    local exactCmd = string.format('QueueTarget("%s", %d, "%s")', d.name, d.index, args[2])
+                    if G.IsAutoQueue then G.autoTickLog(exactCmd) end
+                    G.safeAddLog("🎯 Target "..args[2], exactCmd, false)
+                end
+
+            elseif remoteName == "TroopEvent" then
+                if G.IsResetting then return end 
+                
+                local act = args[1]; local unitIdentifier = args[2]
+                local d; local actualUnit
+                if typeof(unitIdentifier) == "number" then
+                    for unit, data in pairs(G.TroopMapping) do 
+                        if data.id == unitIdentifier then d = data; actualUnit = unit; break end 
+                    end
+                else
+                    d = G.TroopMapping[unitIdentifier]; actualUnit = unitIdentifier
+                end
+
+                if d then
+                    if act == "Upgrade" then
+                        d.level = d.level + 1; local cmd = string.format('QueueUpgrade("%s", %d, %d)', d.name, d.index, d.level)
+                        if G.IsAutoQueue then G.autoTickLog(cmd) end
+                        G.safeAddLog(string.format("🔵 Upgrade %s %d", d.name, d.index), cmd, false)
+                    
+                    elseif act == "Ability" then
+                        G.GlobalAbilityCounts[d.name] = (G.GlobalAbilityCounts[d.name] or 0) + 1
+                        local cost = G.getAbilityCost(d.name, actualUnit)
+                        d.abilityCount = d.abilityCount + 1
+                        local manaCmd = string.format('QueueWaitMana(%d)', cost)
+                        local abCmd = string.format('QueueAbility("%s", %d)', d.name, d.index)
+                        
+                        if G.IsAutoQueue then G.autoTickLog(manaCmd); G.autoTickLog(abCmd) end
+                        G.safeAddLog("🟡 Wait Mana: "..cost, manaCmd, false)
+                        G.safeAddLog("🟠 "..d.name.." Ability", abCmd, false)
+
+                    elseif act == "Sell" then
+                        local cmd = string.format('QueueSell("%s", %d)', d.name, d.index)
+                        if G.IsAutoQueue then G.autoTickLog(cmd) end
+                        G.safeAddLog("🔴 Sell "..d.name, cmd, false)
+                        
+                        if typeof(unitIdentifier) == "Instance" then G.TroopMapping[unitIdentifier] = nil 
+                        else for k, v in pairs(G.TroopMapping) do if v.id == unitIdentifier then G.TroopMapping[k] = nil break end end end
+                    
+                    elseif act == "BulkSell" then
+                        local heroType = args[3]
+                        local cmd = string.format('QueueBulkSell("%s")', heroType)
+                        if G.IsAutoQueue then G.autoTickLog(cmd) end
+                        G.safeAddLog("🟥 Bulk Sell "..heroType, cmd, false)
+                        for unit, data in pairs(G.TroopMapping) do if data.name == heroType then G.TroopMapping[unit] = nil end end
+
+                    elseif act == "BulkUp" then
+                        local bn = args[3] or "Unknown"; local cost = 0; 
+                        local dataRef = G.findUnitData(bn)
+                        local stg = dataRef and (dataRef.Stages or dataRef.Levels or dataRef.Upgrades)
+
+                        for unit, dInfo in pairs(G.TroopMapping) do 
+                            if dInfo.name == bn then 
+                                local nl = dInfo.level + 1
+                                if stg and stg[nl] then
+                                    local raw = stg[nl].Cost or stg[nl].Price
+                                    local stats = unit:FindFirstChild("Stats")
+                                    if stats then cost = cost + (tonumber(G.getFinalCost(raw, stats, false)) or 0) end
+                                end
+                                dInfo.level = nl 
+                            end 
+                        end
+                        local cmd = string.format('QueueBulk("%s")', bn)
+                        if G.IsAutoQueue then
+                            if cost > 0 then G.autoTickLog(string.format('QueueWaitMana(%d)', cost)) end
+                            G.autoTickLog(cmd)
+                        end
+                        if cost > 0 then G.safeAddLog("🟡 Wait Mana: "..cost, string.format('QueueWaitMana(%d)', cost), false) end
+                        G.safeAddLog("🟣 Bulk "..bn, cmd, false) 
+                    end
+                end
+            elseif remoteName == "SkipWave" then
+                if G.autoSkipObj.Value == false then 
+                    if G.IsAutoQueue then G.autoTickLog("QueueSkip()") end
+                    G.safeAddLog("⏩ Manual Skip", "QueueSkip()", false) 
+                end
+            elseif remoteName == "ModeVote" then
+                local cmd = string.format('VoteMode("%s")', tostring(args[1]))
+                if G.IsAutoQueue then G.autoTickLog(cmd) end
+                G.safeAddLog("🗳️ Vote: "..tostring(args[1]), cmd, false)
+            end
+        end)
+    end
+    return oldNamecall(self, ...)
+end)
+
+-- Final Initialization
+G.setupInitialCreateUI()
+G.refreshFiles()
+G.updateTabVisibility(false)
