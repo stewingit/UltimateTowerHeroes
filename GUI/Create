@@ -1,0 +1,174 @@
+-- PART 3: CREATE & LOAD TAB
+local G = getgenv().THU_Logger
+
+G.autoTickLog = function(actionCode)
+    for _, data in ipairs(G.LoadedLogsRef) do 
+        if not data.Ticked and data.Code:find(actionCode, 1, true) then 
+            data.Ticked = true
+            pcall(function() data.Btn:Set("<s>" .. data.OriginalText .. "</s>") end)
+            break 
+        end 
+    end
+end
+
+G.createManageUI = function()
+    if G.ManageSection then return end
+    G.NameLabel = G.CreateTab:CreateLabel("Currently Recording: " .. G.SaveNameInput)
+    G.ManageSection = G.CreateTab:CreateSection("Manage Strategy")
+    
+    G.SaveButton = G.CreateTab:CreateButton({
+        Name = "💾 Save Strat to File",
+        Callback = function()
+            if G.SaveNameInput ~= "" then 
+                local fullScript = 'loadstring(game:HttpGet("'..G.ENGINE_LINK..'"))()\n\n' .. table.concat(G.SessionLogs, "\n") .. '\n\nStartAutomation()'
+                writefile(G.FolderName.."/"..G.SaveNameInput..".lua", fullScript)
+                G.Rayfield:Notify({Title = "Saved", Content = "Saved as " .. G.SaveNameInput .. ".lua", Duration = 3, Image = "save"})
+                G.refreshFiles()
+            else
+                G.Rayfield:Notify({Title = "Error", Content = "Name not found!", Duration = 3, Image = "circle-alert"})
+            end
+        end
+    })
+    
+    G.ResetButton = G.CreateTab:CreateButton({
+        Name = "🗑️ Reset / Clear All",
+        Callback = function() G.clearAllData() end
+    })
+    G.LogSection = G.CreateTab:CreateSection("--- Action Logs ---")
+end
+
+G.clearAllData = function()
+    G.IsResetting = true
+    for t, _ in pairs(G.TroopMapping) do 
+        if t and t.Parent then task.spawn(function() G.TroopEvent:FireServer("Sell", t) end) end 
+    end
+    
+    G.SessionLogs = {}; G.TroopCounts = {}; G.TroopMapping = {}; G.GlobalAbilityCounts = {}
+    G.UnitIDToHero = {}; G.CurrentLoadedContent = ""; G.IsAutoQueue = false; G.LoadedLogsRef = {}
+    
+    local uiToDestroy = {"NameLabel", "ManageSection", "SaveButton", "ResetButton", "LogSection", "LoadedExecSection"}
+    for _, ui in ipairs(uiToDestroy) do if G[ui] then pcall(function() G[ui]:Destroy() end); G[ui] = nil end end
+    
+    for _, el in ipairs(G.CreateLogElements) do pcall(function() el:Destroy() end) end; G.CreateLogElements = {}
+    for _, el in ipairs(G.LoadLogElements) do pcall(function() el:Destroy() end) end; G.LoadLogElements = {}
+    
+    G.LoadedExecSection = G.LoadedTab:CreateSection("Execution Steps")
+    for idx, paragraph in pairs(G.StatParagraphs) do if paragraph then pcall(function() paragraph:Destroy() end) end end
+    G.StatParagraphs = {}
+    
+    G.updateTabVisibility(false)
+    G.setupInitialCreateUI() 
+    G.Rayfield:Notify({Title = "Cleared", Content = "Logs wiped and troops sold.", Duration = 3, Image = "trash"})
+    task.delay(1, function() G.IsResetting = false end)
+end
+
+G.setupInitialCreateUI = function()
+    G.IsRecording = false; G.SaveNameInput = ""
+    local uiToDestroy = {"NameLabel", "StartSection", "NameInput", "BeginButton"}
+    for _, ui in ipairs(uiToDestroy) do if G[ui] then pcall(function() G[ui]:Destroy() end); G[ui] = nil end end
+
+    G.StartSection = G.CreateTab:CreateSection("Start New Strategy")
+    G.NameInput = G.CreateTab:CreateInput({
+        Name = "Name Strategy", CurrentValue = "", PlaceholderText = "e.g., GodlyStrat1...",
+        Callback = function(Text) G.SaveNameInput = Text end
+    })
+    G.BeginButton = G.CreateTab:CreateButton({
+        Name = "Begin Creating",
+        Callback = function()
+            if G.SaveNameInput ~= "" then
+                if G.StartSection then pcall(function() G.StartSection:Destroy() end); G.StartSection = nil end
+                if G.NameInput then pcall(function() G.NameInput:Destroy() end); G.NameInput = nil end
+                if G.BeginButton then pcall(function() G.BeginButton:Destroy() end); G.BeginButton = nil end
+                G.IsRecording = true; G.createManageUI()
+                G.Rayfield:Notify({Title = "Recording Started", Content = "Logging: " .. G.SaveNameInput, Duration = 3, Image = "video"})
+            else
+                G.Rayfield:Notify({Title = "Error", Content = "Please enter a name!", Duration = 3})
+            end
+        end
+    })
+end
+
+G.getEmojiPrefix = function(line)
+    if line:find('QueuePlace') then return "🟢 Place"
+    elseif line:find('QueueUpgrade') then return "🔵 Upgrade"
+    elseif line:find('QueueSell') then return "🔴 Sell"
+    elseif line:find('QueueBulkSell') then return "🟥 Bulk Sell"
+    elseif line:find('QueueAbility') then return "🟠 Ability"
+    elseif line:find('QueueTarget') then return "🎯 Target"
+    elseif line:find('QueueWaitMana') then return "🟡 Wait Mana"
+    elseif line:find('QueueSkip') then return "⏩ Manual Skip"
+    elseif line:find('EnableAutoSkip') then return "🔁 AutoSkip: ON"
+    elseif line:find('DisableAutoSkip') then return "🔁 AutoSkip: OFF"
+    elseif line:find('VoteMode') then return "🗳️ Vote"
+    elseif line:find('QueueBulk') then return "🟣 Bulk"
+    else return "⚙️ Action" end
+end
+
+G.LogQueue = {}
+G.RunService.Heartbeat:Connect(function()
+    while #G.LogQueue > 0 do
+        local args = table.remove(G.LogQueue, 1)
+        local text, code, isLoaded = args[1], args[2], args[3]
+        if not isLoaded then table.insert(G.SessionLogs, code) end
+        local targetTab = isLoaded and G.LoadedTab or G.CreateTab
+        local btn = targetTab:CreateButton({
+            Name = text,
+            Callback = function()
+                if setclipboard then setclipboard(code) end
+                G.Rayfield:Notify({Title = "Copied", Content = "Action code copied to clipboard.", Duration = 1, Image = "clipboard"})
+            end
+        })
+        if isLoaded then 
+            table.insert(G.LoadLogElements, btn)
+            table.insert(G.LoadedLogsRef, {Code = code, Btn = btn, OriginalText = text, Ticked = false}) 
+        else
+            table.insert(G.CreateLogElements, btn)
+        end
+    end
+end)
+
+G.safeAddLog = function(text, code, isLoaded)
+    if not isLoaded and not G.IsRecording then return end
+    table.insert(G.LogQueue, {text, code, isLoaded})
+end
+
+G.parseScript = function(content, isLocked)
+    G.CurrentLoadedContent = content
+    if G.LoadedExecSection then pcall(function() G.LoadedExecSection:Destroy() end); G.LoadedExecSection = nil end
+    for _, el in pairs(G.LoadLogElements) do pcall(function() el:Destroy() end) end
+    G.LoadLogElements = {}; G.LoadedLogsRef = {}
+    G.LoadedExecSection = G.LoadedTab:CreateSection("Execution Steps")
+    
+    for line in content:gmatch("[^\r\n]+") do
+        if not line:find("loadstring") and not line:find("StartAutomation") and line:match("%S") then
+            local prefix = G.getEmojiPrefix(line)
+            local detail = line:match('"(.-)"') or line:match('%((%d+)%)') or ""
+            if line:find('QueuePlace') then detail = line:match('QueuePlace%("(.-)"') or "" end
+            G.safeAddLog(detail ~= "" and (prefix .. " " .. detail) or prefix, line, true)
+        end
+    end
+end
+
+G.refreshFiles = function()
+    if G.FileListSection then pcall(function() G.FileListSection:Destroy() end); G.FileListSection = nil end
+    for _, btn in pairs(G.FileLogElements) do pcall(function() btn:Destroy() end) end
+    G.FileLogElements = {}
+    G.FileListSection = G.LoadTab:CreateSection("Saved Files")
+    if listfiles then 
+        for _, file in ipairs(listfiles(G.FolderName)) do 
+            local clean = file:gsub(G.FolderName.."/", ""):gsub(".lua", "")
+            local fileBtn = G.LoadTab:CreateButton({
+                Name = "📂 " .. clean,
+                Callback = function() 
+                    G.parseScript(readfile(file), false) 
+                    G.updateTabVisibility(true)
+                    G.Rayfield:Notify({Title = "In 'Loaded' tab", Content = "Loaded " .. clean, Duration = 3, Image = "file-check"})
+                end
+            })
+            table.insert(G.FileLogElements, fileBtn)
+        end 
+    end
+end
+
+-- > CHAIN TO PART 4
+loadstring(game:HttpGet("https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/GUI/Loaded"))()
