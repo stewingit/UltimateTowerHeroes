@@ -1,0 +1,105 @@
+-- PART 2: STATS TAB LOGIC
+local G = getgenv().THU_Logger
+
+local STELLA_SETTINGS = {
+    [1] = {Base = 20,  Penalty = 1}, [2] = {Base = 57,  Penalty = 3}, 
+    [3] = {Base = 102, Penalty = 3.5}, [4] = {Base = 169, Penalty = 5}, 
+    [5] = {Base = 234, Penalty = 7.9} 
+}
+
+G.refreshStatsUI = function()
+    local troops = G.TroopFolder:GetChildren()
+    local sTime = G.Workspace:GetServerTimeNow()
+    local groups = {}; local groupOrder = {}
+
+    for i, unit in ipairs(troops) do
+        local stats = unit:FindFirstChild("Stats")
+        if stats then
+            local unitModule = G.toStr(stats:FindFirstChild("Module") or unit)
+            local level = stats:FindFirstChild("Level") and stats.Level.Value or 1
+            local targetType = G.toStr(stats:FindFirstChild("TargetType") or "N/A")
+            local spawner = stats:FindFirstChild("Spawner")
+            local isDrawing = (spawner and spawner.Value) or (unitModule == "Drawing")
+            local status = "MAX"; local cooldownText = ""
+
+            if isDrawing then
+                local hpVal = stats:FindFirstChild("Health")
+                local currentHP = hpVal and hpVal.Value or 0
+                local maxHP = (hpVal and hpVal:FindFirstChild("BaseHealth")) and hpVal.BaseHealth.Value or 1
+                local ownerLevel = 1 
+                if spawner and spawner.Value then
+                    local ownerStats = spawner.Value:FindFirstChild("Stats")
+                    if ownerStats and ownerStats:FindFirstChild("Level") then ownerLevel = ownerStats.Level.Value end
+                end
+                local config = STELLA_SETTINGS[ownerLevel] or STELLA_SETTINGS[5]
+                local missingHP = math.max(0, maxHP - currentHP)
+                local abilityPrice = math.floor(config.Base + (missingHP * config.Penalty))
+                status = string.format("HP: %d/%d | Cost: %d (Stella Lvl %d)", currentHP, maxHP, abilityPrice, ownerLevel)
+                targetType = "N/A"
+            else
+                local data = G.findUnitData(unitModule)
+                if data then
+                    local stg = data.Stages or data.Levels or data.Upgrades
+                    local cur, nxt = stg[level], stg[level + 1]
+                    if cur and cur.SpecialAbility then
+                        local sa = cur.SpecialAbility
+                        local cost = G.getFinalCost(sa.Cost or sa.Price, stats, true)
+                        status = ("%s [%s]"):format(sa.Title or "Ability", cost or "Active")
+                        local aTick = stats:FindFirstChild("AbilityTick")
+                        if aTick then
+                            local cd = sa.Cooldown or sa.CD or sa.Duration or 0
+                            local remaining = math.max(0, (aTick.Value + cd) - sTime)
+                            if remaining > 0 then
+                                local remRounded = math.floor(remaining * 2) / 2
+                                cooldownText = ("\n   > ⏳ (%.1fs / %ds)"):format(remRounded, cd)
+                            else
+                                cooldownText = ("\n   > ✅ (READY / %ds)"):format(cd)
+                            end
+                        end
+                    elseif nxt then
+                        status = ("Upgrade [%s]"):format(G.getFinalCost(nxt.Cost or nxt.Price, stats, false) or "???")
+                    end
+                end
+            end
+
+            local exactKey = string.format("%s_%s_%s_%s_%s", unitModule, level, status, cooldownText, targetType)
+            if not groups[exactKey] then
+                groups[exactKey] = {indices = {}, unitModule = unitModule, level = level, status = status, cooldownText = cooldownText, targetType = targetType}
+                table.insert(groupOrder, exactKey)
+            end
+            table.insert(groups[exactKey].indices, i)
+        end
+    end
+
+    for idx, key in ipairs(groupOrder) do
+        local gData = groups[key]
+        local indicesStr = table.concat(gData.indices, ",")
+        local titleText = ("[%s] %s (Lvl %s)"):format(indicesStr, gData.unitModule, tostring(gData.level))
+        local contentText = ("Status: %s%s\nTarget: %s"):format(gData.status, gData.cooldownText, gData.targetType)
+
+        if G.StatParagraphs[idx] then
+            pcall(function() G.StatParagraphs[idx]:Set({Title = titleText, Content = contentText}) end)
+        else
+            pcall(function() G.StatParagraphs[idx] = G.StatsTab:CreateParagraph({Title = titleText, Content = contentText}) end)
+        end
+    end
+
+    for idx = #groupOrder + 1, #G.StatParagraphs do
+        if G.StatParagraphs[idx] then pcall(function() G.StatParagraphs[idx]:Destroy() end); G.StatParagraphs[idx] = nil end
+    end
+end
+
+G.StatsTab:CreateButton({
+    Name = "🔄 Refresh Stats",
+    Callback = function()
+        G.refreshStatsUI()
+        G.Rayfield:Notify({Title = "Stats Updated", Content = "Hero stats and cooldowns refreshed.", Duration = 2, Image = "refresh-ccw"})
+    end
+})
+
+task.spawn(function()
+    while task.wait(0.5) do pcall(G.refreshStatsUI) end
+end)
+
+-- > CHAIN TO PART 3
+loadstring(game:HttpGet("https://raw.githubusercontent.com/stewingit/UltimateTowerHeroes/refs/heads/main/GUI/Create"))()
